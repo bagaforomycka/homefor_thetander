@@ -1,6 +1,9 @@
 <?php
 session_start();
 
+require_once __DIR__ . '/../config/db.php';
+
+// Only Admin and Staff can access Resident Management.
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
     !in_array($_SESSION['role'], ['admin', 'staff'], true)
@@ -9,15 +12,16 @@ if (
     exit;
 }
 
-require_once __DIR__ . '/../config/db.php';
+$search = trim($_GET['search'] ?? '');
+$status = trim($_GET['status'] ?? '');
 
-$pageTitle = 'Resident Management';
-$error = '';
-$residents = [];
+$allowedStatuses = ['Active', 'Inactive'];
 
-try {
-    $stmt = $pdo->query(
-        "SELECT
+if (!in_array($status, $allowedStatuses, true)) {
+    $status = '';
+}
+
+$sql = "SELECT
             id,
             resident_id,
             first_name,
@@ -26,155 +30,230 @@ try {
             date_of_birth,
             gender,
             contact_number,
-            address,
             room_number,
             admission_date,
             care_level,
             assigned_caretaker,
             assigned_staff,
-            status,
-            created_at
-         FROM residents
-         ORDER BY created_at DESC, id DESC"
-    );
+            status
+        FROM residents
+        WHERE 1 = 1";
 
-    $residents = $stmt->fetchAll();
-} catch (PDOException $e) {
-    error_log($e->getMessage());
-    $error = 'Unable to load residents. Please check the residents table structure.';
+$params = [];
+
+if ($search !== '') {
+    $sql .= " AND (
+        resident_id LIKE :resident_id
+        OR first_name LIKE :first_name
+        OR middle_name LIKE :middle_name
+        OR last_name LIKE :last_name
+    )";
+
+    $keyword = '%' . $search . '%';
+
+    $params['resident_id'] = $keyword;
+    $params['first_name'] = $keyword;
+    $params['middle_name'] = $keyword;
+    $params['last_name'] = $keyword;
 }
 
-function e($value): string
+if ($status !== '') {
+    $sql .= " AND status = :status";
+    $params['status'] = $status;
+}
+
+$sql .= " ORDER BY id DESC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$residents = $stmt->fetchAll();
+
+function h($value): string
 {
-    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= e($pageTitle) ?> | Home for the Tender</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet">
-    <style>
-        body {
-            background: #f5f8f6;
-            color: #24352b;
-            font-family: Arial, sans-serif;
-        }
-        .page-header {
-            background: #33b960;
-            color: white;
-            padding: 24px;
-            border-radius: 14px;
-        }
-        .content-card {
-            background: white;
-            border-radius: 14px;
-            padding: 22px;
-            box-shadow: 0 3px 14px rgba(0,0,0,.06);
-        }
-        .table thead th {
-            background: #e7f7ec;
-            white-space: nowrap;
-        }
-        .table td {
-            vertical-align: middle;
-        }
-        .resident-table {
-            font-size: 14px;
-        }
-        .status {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 20px;
-            background: #e7f7ec;
-            color: #176b35;
-            white-space: nowrap;
-        }
-    </style>
-</head>
-<body>
-<div class="container-fluid px-3 px-lg-4 py-4">
 
-    <div class="page-header mb-4">
-        <h1 class="h3 mb-1">Resident Management</h1>
-        <p class="mb-0">View and manage Home for the Tender resident records.</p>
+<?php require __DIR__ . '/../includes/sidebar.php'; ?>
+
+<style>
+.page-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+
+.page-heading h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 6px;
+}
+
+.page-heading p {
+    color: #6b7b70;
+    margin: 0;
+}
+
+.resident-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .04);
+}
+
+.table th {
+    background: #f1f8f3;
+    white-space: nowrap;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.filter-button {
+    background: #33b960;
+    border-color: #33b960;
+    color: #fff;
+}
+
+.filter-button:hover {
+    background: #26984b;
+    border-color: #26984b;
+    color: #fff;
+}
+</style>
+
+<div class="page-heading">
+    <div>
+        <h1>Resident Management</h1>
+        <p>View and manage resident information.</p>
     </div>
 
-    <div class="content-card">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-            <div>
-                <h2 class="h5 mb-1">Resident List</h2>
-                <p class="text-muted mb-0">
-                    Total records: <?= count($residents) ?>
-                </p>
-            </div>
-
-            <div class="d-flex gap-2">
-               <a href="add_resident.php" class="btn btn-success">
-              + Add Resident
-         </a>
-            <a href="dashboard.php" class="btn btn-outline-success">
-               Back to Dashboard
-         </a>
+    <!-- Correct link: both files are inside the admin folder. -->
+    <a href="add_resident.php" class="btn btn-success">
+        + Add Resident
+    </a>
 </div>
+
+<?php if (isset($_GET['added']) && $_GET['added'] === '1'): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        Resident added successfully.
+        <button type="button" class="btn-close"
+                data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($_GET['updated']) && $_GET['updated'] === '1'): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        Resident updated successfully.
+        <button type="button" class="btn-close"
+                data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+<?php endif; ?>
+
+<div class="resident-card mb-4">
+    <form method="GET" action="residents.php" class="row g-3">
+        <div class="col-md-6">
+            <label for="search" class="form-label">Search residents</label>
+            <input
+                type="text"
+                class="form-control"
+                id="search"
+                name="search"
+                placeholder="Resident ID or name"
+                value="<?= h($search) ?>"
+            >
         </div>
 
-        <?php if ($error !== ''): ?>
-            <div class="alert alert-danger"><?= e($error) ?></div>
-        <?php elseif (count($residents) === 0): ?>
-            <div class="alert alert-info">
-                No residents have been added yet. Your resident table is ready,
-                but it currently contains no records.
-            </div>
-        <?php else: ?>
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover resident-table">
-                    <thead>
-                    <tr>
-                        <th>Resident ID</th>
-                        <th>Full Name</th>
-                        <th>Date of Birth</th>
-                        <th>Gender</th>
-                        <th>Contact</th>
-                        <th>Room</th>
-                        <th>Admission Date</th>
-                        <th>Care Level</th>
-                        <th>Assigned Caretaker</th>
-                        <th>Assigned Staff</th>
-                        <th>Status</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($residents as $resident): ?>
-                        <tr>
-                            <td><?= e($resident['resident_id']) ?></td>
-                            <td>
-                                <?= e(trim(
-                                    ($resident['first_name'] ?? '') . ' ' .
-                                    ($resident['middle_name'] ?? '') . ' ' .
-                                    ($resident['last_name'] ?? '')
-                                )) ?>
-                            </td>
-                            <td><?= e($resident['date_of_birth']) ?></td>
-                            <td><?= e($resident['gender']) ?></td>
-                            <td><?= e($resident['contact_number']) ?></td>
-                            <td><?= e($resident['room_number']) ?></td>
-                            <td><?= e($resident['admission_date']) ?></td>
-                            <td><?= e($resident['care_level']) ?></td>
-                            <td><?= e($resident['assigned_caretaker']) ?></td>
-                            <td><?= e($resident['assigned_staff']) ?></td>
-                            <td><span class="status"><?= e($resident['status']) ?></span></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
+        <div class="col-md-3">
+            <label for="status" class="form-label">Filter by status</label>
+            <select name="status" id="status" class="form-select">
+                <option value="">All statuses</option>
+                <option value="Active" <?= $status === 'Active' ? 'selected' : '' ?>>
+                    Active
+                </option>
+                <option value="Inactive" <?= $status === 'Inactive' ? 'selected' : '' ?>>
+                    Inactive
+                </option>
+            </select>
+        </div>
+
+        <div class="col-md-3 d-flex align-items-end gap-2">
+            <button type="submit" class="btn filter-button">
+                Search
+            </button>
+            <a href="residents.php" class="btn btn-outline-secondary">
+                Reset
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="resident-card">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">Resident List</h2>
+        <span class="text-muted">
+            Total: <?= count($residents) ?>
+        </span>
     </div>
 
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Resident ID</th>
+                    <th>Full Name</th>
+                    <th>Room</th>
+                    <th>Care Level</th>
+                    <th>Admission Date</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                <?php if (empty($residents)): ?>
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            No residents found.
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($residents as $resident): ?>
+                        <?php
+                        $fullName = trim(
+                            $resident['first_name'] . ' ' .
+                            ($resident['middle_name'] ?? '') . ' ' .
+                            $resident['last_name']
+                        );
+                        ?>
+                        <tr>
+                            <td><?= h($resident['resident_id']) ?></td>
+                            <td><?= h(preg_replace('/\s+/', ' ', $fullName)) ?></td>
+                            <td><?= h($resident['room_number'] ?: 'Not assigned') ?></td>
+                            <td><?= h($resident['care_level'] ?: 'Not set') ?></td>
+                            <td><?= h($resident['admission_date'] ?: '—') ?></td>
+                            <td>
+                                <?php if ($resident['status'] === 'Active'): ?>
+                                    <span class="badge text-bg-success">Active</span>
+                                <?php else: ?>
+                                    <span class="badge text-bg-secondary">
+                                        <?= h($resident['status'] ?: 'Unknown') ?>
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+</main>
 </body>
 </html>
