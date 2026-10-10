@@ -1,10 +1,9 @@
-
 <?php
 session_start();
 
 require_once __DIR__ . '/../config/db.php';
 
-
+// Allow only logged-in administrators and staff.
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
     !in_array($_SESSION['role'], ['admin', 'staff'], true)
@@ -13,7 +12,7 @@ if (
     exit;
 }
 
-
+// Generate a CSRF token for form submissions.
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -25,53 +24,63 @@ if (!in_array($status, ['Active', 'Inactive'], true)) {
     $status = '';
 }
 
+$errorMessage = '';
+$residents = [];
 
-$sql = "SELECT
-            id,
-            resident_id,
-            first_name,
-            middle_name,
-            last_name,
-            date_of_birth,
-            gender,
-            contact_number,
-            room_number,
-            admission_date,
-            care_level,
-            assigned_caretaker,
-            assigned_staff,
-            status
-        FROM residents
-        WHERE deleted_at IS NULL";
+try {
+    // Do not reference deleted_at because that column
+    // is not currently present in your residents table.
+    $sql = "SELECT
+                id,
+                resident_id,
+                first_name,
+                middle_name,
+                last_name,
+                date_of_birth,
+                gender,
+                contact_number,
+                room_number,
+                admission_date,
+                care_level,
+                assigned_caretaker,
+                assigned_staff,
+                status
+            FROM residents
+            WHERE 1 = 1";
 
-$params = [];
+    $params = [];
 
-if ($search !== '') {
-    $sql .= " AND (
-        resident_id LIKE :resident_id
-        OR first_name LIKE :first_name
-        OR middle_name LIKE :middle_name
-        OR last_name LIKE :last_name
-    )";
+    if ($search !== '') {
+        $sql .= " AND (
+            resident_id LIKE :resident_id
+            OR first_name LIKE :first_name
+            OR middle_name LIKE :middle_name
+            OR last_name LIKE :last_name
+        )";
 
-    $keyword = '%' . $search . '%';
+        $keyword = '%' . $search . '%';
 
-    $params['resident_id'] = $keyword;
-    $params['first_name'] = $keyword;
-    $params['middle_name'] = $keyword;
-    $params['last_name'] = $keyword;
+        $params['resident_id'] = $keyword;
+        $params['first_name'] = $keyword;
+        $params['middle_name'] = $keyword;
+        $params['last_name'] = $keyword;
+    }
+
+    if ($status !== '') {
+        $sql .= " AND status = :status";
+        $params['status'] = $status;
+    }
+
+    $sql .= " ORDER BY id DESC";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $residents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (PDOException $e) {
+    error_log('Residents page error: ' . $e->getMessage());
+    $errorMessage = 'Unable to load residents. Please check your database table columns.';
 }
-
-if ($status !== '') {
-    $sql .= " AND status = :status";
-    $params['status'] = $status;
-}
-
-$sql .= " ORDER BY id DESC";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$residents = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 function h($value): string
 {
@@ -81,9 +90,9 @@ function h($value): string
         'UTF-8'
     );
 }
-?>
 
-<?php require __DIR__ . '/../includes/sidebar.php'; ?>
+require __DIR__ . '/../includes/sidebar.php';
+?>
 
 <style>
 .page-heading {
@@ -181,7 +190,7 @@ function h($value): string
 
 <?php if (($_GET['deleted'] ?? '') === 'soft'): ?>
     <div class="alert alert-warning">
-        Resident soft-deleted successfully. The record has been retained.
+        Resident marked as deleted.
     </div>
 <?php elseif (($_GET['deleted'] ?? '') === 'hard'): ?>
     <div class="alert alert-danger">
@@ -189,212 +198,163 @@ function h($value): string
     </div>
 <?php endif; ?>
 
-<div class="resident-card mb-4">
-    <form method="GET" action="residents.php" class="row g-3">
+<?php if ($errorMessage !== ''): ?>
+    <div class="alert alert-danger">
+        <?= h($errorMessage) ?>
+    </div>
+<?php else: ?>
 
-        <div class="col-md-6">
-            <label for="search" class="form-label">
-                Search residents
-            </label>
+    <div class="resident-card mb-4">
+        <form method="GET" action="residents.php" class="row g-3">
 
-            <input
-                type="text"
-                class="form-control"
-                id="search"
-                name="search"
-                placeholder="Resident ID or name"
-                value="<?= h($search) ?>"
-            >
-        </div>
+            <div class="col-md-6">
+                <label for="search" class="form-label">
+                    Search residents
+                </label>
 
-        <div class="col-md-3">
-            <label for="status" class="form-label">
-                Filter by status
-            </label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="search"
+                    name="search"
+                    placeholder="Resident ID or name"
+                    value="<?= h($search) ?>"
+                >
+            </div>
 
-            <select name="status" id="status" class="form-select">
-                <option value="">All statuses</option>
-                <option value="Active"
-                    <?= $status === 'Active' ? 'selected' : '' ?>>
-                    Active
-                </option>
-                <option value="Inactive"
-                    <?= $status === 'Inactive' ? 'selected' : '' ?>>
-                    Inactive
-                </option>
-            </select>
-        </div>
+            <div class="col-md-3">
+                <label for="status" class="form-label">
+                    Filter by status
+                </label>
 
-        <div class="col-md-3 d-flex align-items-end gap-2">
-            <button type="submit" class="btn filter-button">
-                Search
-            </button>
+                <select name="status" id="status" class="form-select">
+                    <option value="">All statuses</option>
+                    <option value="Active"
+                        <?= $status === 'Active' ? 'selected' : '' ?>>
+                        Active
+                    </option>
+                    <option value="Inactive"
+                        <?= $status === 'Inactive' ? 'selected' : '' ?>>
+                        Inactive
+                    </option>
+                </select>
+            </div>
 
-            <a href="residents.php"
-               class="btn btn-outline-secondary">
-                Reset
-            </a>
-        </div>
-    </form>
-</div>
+            <div class="col-md-3 d-flex align-items-end gap-2">
+                <button type="submit" class="btn filter-button">
+                    Search
+                </button>
 
-<div class="resident-card">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="h5 mb-0">Resident List</h2>
-
-        <span class="text-muted">
-            Total: <?= count($residents) ?>
-        </span>
+                <a href="residents.php"
+                   class="btn btn-outline-secondary">
+                    Reset
+                </a>
+            </div>
+        </form>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
+    <div class="resident-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h5 mb-0">Resident List</h2>
 
-            <thead>
-                <tr>
-                    <th>Resident ID</th>
-                    <th>Full Name</th>
-                    <th>Room</th>
-                    <th>Care Level</th>
-                    <th>Admission Date</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
+            <span class="text-muted">
+                Total: <?= count($residents) ?>
+            </span>
+        </div>
 
-            <tbody>
-                <?php if (empty($residents)): ?>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
                     <tr>
-                        <td colspan="7"
-                            class="text-center text-muted py-4">
-                            No residents found.
-                        </td>
+                        <th>Resident ID</th>
+                        <th>Full Name</th>
+                        <th>Room</th>
+                        <th>Care Level</th>
+                        <th>Admission Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
                     </tr>
-                <?php else: ?>
+                </thead>
 
-                    <?php foreach ($residents as $resident): ?>
-
-                        <?php
-                        $fullName = trim(
-                            $resident['first_name'] . ' ' .
-                            ($resident['middle_name'] ?? '') . ' ' .
-                            $resident['last_name']
-                        );
-
-                        $fullName = preg_replace('/\s+/', ' ', $fullName);
-                        ?>
-
+                <tbody>
+                    <?php if (empty($residents)): ?>
                         <tr>
-                            <td><?= h($resident['resident_id']) ?></td>
-
-                            <td><?= h($fullName) ?></td>
-
-                            <td>
-                                <?= h($resident['room_number'] ?: 'Not assigned') ?>
-                            </td>
-
-                            <td>
-                                <?= h($resident['care_level'] ?: 'Not set') ?>
-                            </td>
-
-                            <td>
-                                <?= h($resident['admission_date'] ?: '—') ?>
-                            </td>
-
-                            <td>
-                                <?php if ($resident['status'] === 'Active'): ?>
-                                    <span class="badge text-bg-success">
-                                        Active
-                                    </span>
-                                <?php else: ?>
-                                    <span class="badge text-bg-secondary">
-                                        <?= h($resident['status'] ?: 'Unknown') ?>
-                                    </span>
-                                <?php endif; ?>
-                            </td>
-
-                            <td>
-                                <div class="action-buttons">
-
-                                    <!-- Soft Delete -->
-                                    <form
-                                        method="POST"
-                                        action="delete_resident.php"
-                                        onsubmit="return confirm('Soft-delete this resident? Their record will be retained.');"
-                                    >
-                                        <input
-                                            type="hidden"
-                                            name="csrf_token"
-                                            value="<?= h($_SESSION['csrf_token']) ?>"
-                                        >
-
-                                        <input
-                                            type="hidden"
-                                            name="id"
-                                            value="<?= (int) $resident['id'] ?>"
-                                        >
-
-                                        <input
-                                            type="hidden"
-                                            name="action"
-                                            value="soft_delete"
-                                        >
-
-                                        <button
-                                            type="submit"
-                                            class="btn btn-warning btn-sm"
-                                        >
-                                            Soft Delete
-                                        </button>
-                                    </form>
-
-                                    <!-- Hard Delete: Admin only -->
-                                    <?php if ($_SESSION['role'] === 'admin'): ?>
-
-                                        <form
-                                            method="POST"
-                                            action="delete_resident.php"
-                                            onsubmit="return confirm('WARNING: Permanently delete this resident? This cannot be undone.');"
-                                        >
-                                            <input
-                                                type="hidden"
-                                                name="csrf_token"
-                                                value="<?= h($_SESSION['csrf_token']) ?>"
-                                            >
-
-                                            <input
-                                                type="hidden"
-                                                name="id"
-                                                value="<?= (int) $resident['id'] ?>"
-                                            >
-
-                                            <input
-                                                type="hidden"
-                                                name="action"
-                                                value="hard_delete"
-                                            >
-
-                                            <button
-                                                type="submit"
-                                                class="btn btn-danger btn-sm"
-                                            >
-                                                Hard Delete
-                                            </button>
-                                        </form>
-
-                                    <?php endif; ?>
-
-                                </div>
+                            <td colspan="7"
+                                class="text-center text-muted py-4">
+                                No residents found.
                             </td>
                         </tr>
+                    <?php else: ?>
 
-                    <?php endforeach; ?>
+                        <?php foreach ($residents as $resident): ?>
+                            <?php
+                            $fullName = trim(
+                                ($resident['first_name'] ?? '') . ' ' .
+                                ($resident['middle_name'] ?? '') . ' ' .
+                                ($resident['last_name'] ?? '')
+                            );
 
-                <?php endif; ?>
-            </tbody>
-        </table>
+                            $fullName = preg_replace('/\s+/', ' ', $fullName);
+                            ?>
+
+                            <tr>
+                                <td><?= h($resident['resident_id']) ?></td>
+                                <td><?= h($fullName) ?></td>
+
+                                <td>
+                                    <?= h($resident['room_number'] ?: 'Not assigned') ?>
+                                </td>
+
+                                <td>
+                                    <?= h($resident['care_level'] ?: 'Not set') ?>
+                                </td>
+
+                                <td>
+                                    <?= h($resident['admission_date'] ?: '—') ?>
+                                </td>
+
+                                <td>
+                                    <?php if (($resident['status'] ?? '') === 'Active'): ?>
+                                        <span class="badge text-bg-success">
+                                            Active
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="badge text-bg-secondary">
+                                            <?= h($resident['status'] ?: 'Unknown') ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+
+                                <td>
+                                    <div class="action-buttons">
+                                        <?php if ($_SESSION['role'] === 'admin'): ?>
+                                            <a
+                                                href="edit_resident.php?id=<?= (int) $resident['id'] ?>"
+                                                class="btn btn-primary btn-sm"
+                                            >
+                                                Edit
+                                            </a>
+                                        <?php endif; ?>
+
+                                        <a
+                                            href="view_resident.php?id=<?= (int) $resident['id'] ?>"
+                                            class="btn btn-outline-success btn-sm"
+                                        >
+                                            View
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+
+                        <?php endforeach; ?>
+
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
-</div>
+
+<?php endif; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
