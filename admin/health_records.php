@@ -87,6 +87,8 @@ $residents = [
     <!-- FontAwesome for Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
+    
+
     <style>
         :root {
             --green: #33b960;
@@ -227,7 +229,7 @@ $residents = [
 
 <nav class="navbar navbar-expand-lg sticky-top">
     <div class="container py-2">
-        <a class="navbar-brand text-decoration-none" href="index.php">
+        <a class="navbar-brand text-decoration-none" href="dashboard.php">
             <span class="brand-name">🏡 Home for the Tender</span>
             <span class="brand-tagline d-block">CARE · COMFORT · DIGNITY</span>
         </a>
@@ -236,13 +238,12 @@ $residents = [
             <span class="text-secondary small d-none d-sm-inline">
                 <i class="fa-solid fa-user-shield text-success me-1"></i> Authorized Staff Portal
             </span>
-            <a href="index.php" class="btn btn-outline-success btn-sm">
+            <a href="dashboard.php" class="btn btn-outline-success btn-sm">
                 <i class="fa-solid fa-arrow-left me-1"></i> Back to Home
             </a>
         </div>
     </div>
 </nav>
-
 <header class="dashboard-header">
     <div class="container">
         <div class="row align-items-center justify-content-between g-3">
