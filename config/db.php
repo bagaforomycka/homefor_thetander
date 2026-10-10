@@ -1,7 +1,7 @@
 
 <?php
 $host = 'localhost';
-$dbname = 'homefor_thetander_db';
+$dbname = 'homefor_thetander';
 $username = 'root';
 $password = '';
 
