@@ -12,9 +12,9 @@ $db_connected = true;
 $residents = [
     [
         'id' => 1,
-        'name' => 'Eleanor Vance',
+        'name' => 'Mang Dre',
         'room' => 'Room 204',
-        'last_updated' => 'Sept. 19, 2026',
+        'last_updated' => 'Oct. 10, 2026',
         'blood_type' => 'A+',
         'allergies' => 'Penicillin, Peanuts',
         'medical_conditions' => 'Mild Hypertension, Osteoarthritis',
@@ -33,8 +33,8 @@ $residents = [
     ],
     [
         'id' => 2,
-        'name' => 'Arthur Pendelton',
-        'room' => 'Room 210',
+        'name' => 'Lola Nena',
+        'room' => 'Room 101',
         'last_updated' => 'Sept. 18, 2026',
         'blood_type' => 'O+',
         'allergies' => 'Sulfa drugs',
@@ -54,9 +54,9 @@ $residents = [
     ],
     [
         'id' => 3,
-        'name' => 'Clara Higgins',
-        'room' => 'Room 112',
-        'last_updated' => 'Sept. 15, 2026',
+        'name' => 'Mang Albert',
+        'room' => 'Room 110',
+        'last_updated' => 'Sept. 01, 2026',
         'blood_type' => 'B-',
         'allergies' => 'Latex',
         'medical_conditions' => 'Asthma, Chronic Bronchitis',
@@ -530,11 +530,11 @@ $residents = [
                     <div class="row g-3 mb-4">
                         <div class="col-md-8">
                             <label class="form-label fw-semibold">Resident Name</label>
-                            <input type="text" class="form-control" name="resident_name" placeholder="e.g. Lolo Aldie" required>
+                            <input type="text" class="form-control" name="resident_name" placeholder="" required>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Room Number</label>
-                            <input type="text" class="form-control" name="room_number" placeholder="e.g. 101" required>
+                            <input type="text" class="form-control" name="room_number" placeholder="" required>
                         </div>
                     </div>
 
