@@ -1,4 +1,3 @@
-
 <?php
 
 ini_set('display_errors', '1');
@@ -258,6 +257,31 @@ if (isset($_GET['success'])) {
             color: white;
         }
 
+        /* Back to Home button */
+        .back-home-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: #fff;
+            color: #198754;
+            border: 1px solid #198754;
+            border-radius: 5px;
+            font-size: 16px;
+            text-decoration: none;
+        }
+
+        .back-home-btn:hover {
+            background: #198754;
+            color: #fff;
+        }
+
+        .back-arrow {
+            font-size: 22px;
+            line-height: 1;
+            font-weight: bold;
+        }
+
         .status {
             display: inline-block;
             padding: 5px 10px;
@@ -294,10 +318,9 @@ if (isset($_GET['success'])) {
             </p>
         </div>
 
-        <!-- Back to Dashboard and Add Room buttons -->
         <div class="d-flex flex-wrap gap-2">
-            <a href="../dashboard.php" class="btn quick-actions">
-                &larr; Back to Dashboard
+            <a href="../dashboard.php" class="btn back-home-btn">
+                <span class="back-arrow">&larr;</span> Back to Home
             </a>
 
             <a href="#room-form" class="btn quick-actions">
