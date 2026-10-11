@@ -1,5 +1,6 @@
 
 <?php
+
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 error_reporting(E_ALL);
@@ -293,9 +294,16 @@ if (isset($_GET['success'])) {
             </p>
         </div>
 
-        <a href="#room-form" class="btn quick-actions">
-            + Add Room
-        </a>
+        <!-- Back to Dashboard and Add Room buttons -->
+        <div class="d-flex flex-wrap gap-2">
+            <a href="../dashboard.php" class="btn quick-actions">
+                &larr; Back to Dashboard
+            </a>
+
+            <a href="#room-form" class="btn quick-actions">
+                + Add Room
+            </a>
+        </div>
     </div>
 
     <?php if ($error !== ''): ?>
@@ -346,10 +354,18 @@ if (isset($_GET['success'])) {
         </h5>
 
         <form method="POST" action="index.php">
-            <input type="hidden" name="action" value="<?= $editRoom ? 'update' : 'add' ?>">
+            <input
+                type="hidden"
+                name="action"
+                value="<?= $editRoom ? 'update' : 'add' ?>"
+            >
 
             <?php if ($editRoom): ?>
-                <input type="hidden" name="id" value="<?= (int) $editRoom['id'] ?>">
+                <input
+                    type="hidden"
+                    name="id"
+                    value="<?= (int) $editRoom['id'] ?>"
+                >
             <?php endif; ?>
 
             <div class="row g-3">
@@ -503,7 +519,11 @@ if (isset($_GET['success'])) {
                                         onsubmit="return confirm('Are you sure you want to delete this room?');"
                                     >
                                         <input type="hidden" name="action" value="delete">
-                                        <input type="hidden" name="id" value="<?= (int) $room['id'] ?>">
+                                        <input
+                                            type="hidden"
+                                            name="id"
+                                            value="<?= (int) $room['id'] ?>"
+                                        >
 
                                         <button type="submit" class="btn btn-sm btn-danger">
                                             Delete
