@@ -1,287 +1,233 @@
 
 <?php
+session_start();
+
 require_once __DIR__ . '/../config/db.php';
+
+// Only administrators and staff may access this dashboard.
+if (
+    !isset($_SESSION['user_id'], $_SESSION['role']) ||
+    !in_array($_SESSION['role'], ['admin', 'staff'], true)
+) {
+    header('Location: ../index.php');
+    exit;
+}
 
 $totalResidents = 0;
 $totalCaretakers = 0;
 $totalStaff = 0;
 $availableRooms = 0;
-$residentsNeedingAttention = 0;
+$totalHealthRecords = 0;
+$dashboardError = '';
 
-try {
-    $totalResidents = (int) $pdo->query(
-        "SELECT COUNT(*) FROM residents WHERE deleted_at IS NULL"
-    )->fetchColumn();
-
-    $totalCaretakers = (int) $pdo->query(
-        "SELECT COUNT(*) FROM users
-         WHERE role = 'caretaker' AND status = 'active'"
-    )->fetchColumn();
-
-    $totalStaff = (int) $pdo->query(
-        "SELECT COUNT(*) FROM users
-         WHERE role = 'staff' AND status = 'active'"
-    )->fetchColumn();
-
-    $availableRooms = (int) $pdo->query(
-        "SELECT COUNT(*) FROM rooms WHERE status = 'Available'"
-    )->fetchColumn();
-
-    $residentsNeedingAttention = (int) $pdo->query(
-        "SELECT COUNT(*) FROM residents
-         WHERE status = 'needs_attention'
-         AND deleted_at IS NULL"
-    )->fetchColumn();
-
-} catch (PDOException $e) {
-    error_log('Dashboard error: ' . $e->getMessage());
+function dashboardCount(PDO $pdo, string $sql): int
+{
+    try {
+        return (int) $pdo->query($sql)->fetchColumn();
+    } catch (PDOException $e) {
+        error_log('Dashboard count error: ' . $e->getMessage());
+        return 0;
+    }
 }
 
-function e($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+// Count residents without relying on a deleted_at column.
+// We will add proper soft-delete support in a later step.
+$totalResidents = dashboardCount(
+    $pdo,
+    "SELECT COUNT(*) FROM residents"
+);
+
+$totalCaretakers = dashboardCount(
+    $pdo,
+    "SELECT COUNT(*) FROM users
+     WHERE role = 'caretaker' AND status = 'active'"
+);
+
+$totalStaff = dashboardCount(
+    $pdo,
+    "SELECT COUNT(*) FROM users
+     WHERE role = 'staff' AND status = 'active'"
+);
+
+$availableRooms = dashboardCount(
+    $pdo,
+    "SELECT COUNT(*) FROM rooms WHERE status = 'Available'"
+);
+
+$totalHealthRecords = dashboardCount(
+    $pdo,
+    "SELECT COUNT(*) FROM health_records"
+);
+
+function h($value): string
+{
+    return htmlspecialchars(
+        (string) ($value ?? ''),
+        ENT_QUOTES,
+        'UTF-8'
+    );
 }
+
+require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+.dashboard-heading {
+    margin-bottom: 26px;
+}
 
-    <title>Admin Dashboard | Home for the Aged</title>
+.dashboard-heading h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
 
-    <link
-        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-        rel="stylesheet"
-    >
+.dashboard-heading p {
+    color: #6c757d;
+    margin-bottom: 0;
+}
 
-    <style>
-        body {
-            margin: 0;
-            background: #f5f7fa;
-            font-family: Arial, sans-serif;
-            color: #333;
-        }
+.dashboard-card {
+    display: block;
+    height: 100%;
+    padding: 22px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    color: #212529;
+    text-decoration: none;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .04);
+    transition: transform .2s, box-shadow .2s;
+}
 
-        .dashboard-content {
-            padding: 30px;
-        }
+.dashboard-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .10);
+    color: #198754;
+}
 
-        .dashboard-title {
-            font-size: 28px;
-            font-weight: bold;
-            margin-bottom: 8px;
-        }
+.dashboard-card:focus-visible {
+    outline: 3px solid #198754;
+    outline-offset: 3px;
+}
 
-        .dashboard-subtitle {
-            color: #777;
-            margin-bottom: 30px;
-        }
+.dashboard-card .card-label {
+    color: #6c757d;
+    margin-bottom: 12px;
+}
 
-        .stat-card {
-            background: #fff;
-            border-radius: 12px;
-            padding: 22px;
-            height: 100%;
-            border: 1px solid #e5e7eb;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
+.dashboard-card .card-number {
+    color: #198754;
+    font-size: 34px;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
 
-        .stat-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-        }
+.dashboard-card .card-link {
+    color: #198754;
+    font-weight: 600;
+}
 
-        .stat-card p {
-            color: #6c757d;
-            margin-bottom: 12px;
-            font-size: 15px;
-        }
+.quick-actions {
+    margin-top: 30px;
+}
 
-        .stat-card h3 {
-            color: #198754 !important;
-            font-size: 34px;
-            font-weight: bold;
-            margin-bottom: 18px;
-        }
+.quick-action {
+    display: block;
+    padding: 14px 16px;
+    border-radius: 9px;
+    background: #198754;
+    color: #fff;
+    text-align: center;
+    text-decoration: none;
+    font-weight: 600;
+}
 
-        .room-card-link {
-            display: block;
-            color: inherit;
-            text-decoration: none;
-            height: 100%;
-        }
+.quick-action:hover {
+    background: #146c43;
+    color: #fff;
+}
 
-        .room-card-link:focus-visible {
-            outline: 3px solid #198754;
-            outline-offset: 3px;
-            border-radius: 12px;
-        }
+@media (max-width: 768px) {
+    .dashboard-heading h1 {
+        font-size: 24px;
+    }
+}
+</style>
 
-        .manage-link {
-            display: inline-block;
-            color: #198754;
-            font-weight: bold;
-            font-size: 14px;
-            text-decoration: none;
-        }
+<div class="dashboard-heading">
+    <h1>Admin Dashboard</h1>
+    <p>Welcome to the Home for the Tender Care Management System.</p>
+</div>
 
-        .manage-link:hover {
-            color: #146c43;
-            text-decoration: underline;
-        }
+<div class="row g-4">
 
-        .section-title {
-            font-size: 20px;
-            font-weight: bold;
-            margin: 32px 0 18px;
-        }
-
-        .quick-action {
-            display: block;
-            background: #198754;
-            color: #fff;
-            padding: 14px 18px;
-            border-radius: 8px;
-            text-decoration: none;
-            text-align: center;
-            font-weight: bold;
-            transition: background 0.2s;
-        }
-
-        .quick-action:hover {
-            background: #146c43;
-            color: #fff;
-        }
-
-        @media (max-width: 768px) {
-            .dashboard-content {
-                padding: 18px;
-            }
-        }
-    </style>
-</head>
-
-<body>
-
-<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
-
-<main class="dashboard-content">
-
-    <h1 class="dashboard-title">Admin Dashboard</h1>
-
-    <p class="dashboard-subtitle">
-        Welcome to the Home for the Aged Management System.
-    </p>
-
-    <div class="row g-4">
-
-        <!-- Total Residents: Entire card is clickable -->
-        <div class="col-md-6 col-xl-4">
-            <a href="residents/index.php" class="room-card-link">
-                <div class="stat-card">
-                    <p>Total Residents</p>
-
-                    <h3><?= e($totalResidents) ?></h3>
-
-                    <span class="manage-link">
-                        Manage Residents &rarr;
-                    </span>
-                </div>
-            </a>
-        </div>
-
-        <!-- Total Caretakers -->
-        <div class="col-md-6 col-xl-4">
-            <div class="stat-card">
-                <p>Total Caretakers</p>
-
-                <h3><?= e($totalCaretakers) ?></h3>
-
-                <a href="caretakers/index.php" class="manage-link">
-                    Manage Caretakers &rarr;
-                </a>
-            </div>
-        </div>
-
-        <!-- Total Staff -->
-        <div class="col-md-6 col-xl-4">
-            <div class="stat-card">
-                <p>Total Staff</p>
-
-                <h3><?= e($totalStaff) ?></h3>
-
-                <a href="staff/index.php" class="manage-link">
-                    Manage Staff &rarr;
-                </a>
-            </div>
-        </div>
-
-        <!-- Available Rooms: Entire card is clickable -->
-        <div class="col-md-6 col-xl-4">
-            <a href="rooms/index.php" class="room-card-link">
-                <div class="stat-card">
-                    <p>Available Rooms</p>
-
-                    <h3><?= e($availableRooms) ?></h3>
-
-                    <span class="manage-link">
-                        Manage Rooms &rarr;
-                    </span>
-                </div>
-            </a>
-        </div>
-
-        <!-- Residents Needing Attention -->
-        <div class="col-md-6 col-xl-4">
-            <div class="stat-card">
-                <p>Residents Needing Attention</p>
-
-                <h3><?= e($residentsNeedingAttention) ?></h3>
-
-                <a href="residents/index.php" class="manage-link">
-                    Manage Residents &rarr;
-                </a>
-            </div>
-        </div>
-
+    <div class="col-sm-6 col-xl-4">
+        <a class="dashboard-card" href="residents.php">
+            <div class="card-label">Total Residents</div>
+            <div class="card-number"><?= h($totalResidents) ?></div>
+            <span class="card-link">Manage Residents &rarr;</span>
+        </a>
     </div>
 
-    <!-- Quick Actions -->
-    <h2 class="section-title">Quick Actions</h2>
+    <div class="col-sm-6 col-xl-4">
+        <a class="dashboard-card" href="rooms/index.php">
+            <div class="card-label">Available Rooms</div>
+            <div class="card-number"><?= h($availableRooms) ?></div>
+            <span class="card-link">Manage Rooms &rarr;</span>
+        </a>
+    </div>
+
+    <div class="col-sm-6 col-xl-4">
+        <a class="dashboard-card" href="health_records.php">
+            <div class="card-label">Health Records</div>
+            <div class="card-number"><?= h($totalHealthRecords) ?></div>
+            <span class="card-link">Manage Health Records &rarr;</span>
+        </a>
+    </div>
+
+    <div class="col-sm-6 col-xl-4">
+        <a class="dashboard-card" href="caretakers.php">
+            <div class="card-label">Active Caretakers</div>
+            <div class="card-number"><?= h($totalCaretakers) ?></div>
+            <span class="card-link">Manage Caretakers &rarr;</span>
+        </a>
+    </div>
+
+    <div class="col-sm-6 col-xl-4">
+        <a class="dashboard-card" href="caretakers.php">
+            <div class="card-label">Active Staff</div>
+            <div class="card-number"><?= h($totalStaff) ?></div>
+            <span class="card-link">Manage Staff &rarr;</span>
+        </a>
+    </div>
+
+</div>
+
+<div class="quick-actions">
+    <h2 class="h5 fw-bold mb-3">Quick Actions</h2>
 
     <div class="row g-3">
-
-        <div class="col-md-6 col-xl-3">
-            <a href="residents/index.php" class="quick-action">
+        <div class="col-sm-6 col-xl-4">
+            <a href="residents.php" class="quick-action">
                 Manage Residents
             </a>
         </div>
 
-        <div class="col-md-6 col-xl-3">
-            <a href="caretakers/index.php" class="quick-action">
-                Manage Caretakers
-            </a>
-        </div>
-
-        <div class="col-md-6 col-xl-3">
+        <div class="col-sm-6 col-xl-4">
             <a href="rooms/index.php" class="quick-action">
                 Manage Rooms
             </a>
         </div>
 
-        <div class="col-md-6 col-xl-3">
-            <a href="schedules/index.php" class="quick-action">
-                Manage Schedules
+        <div class="col-sm-6 col-xl-4">
+            <a href="health_records.php" class="quick-action">
+                Manage Health Records
             </a>
         </div>
-
     </div>
+</div>
 
 </main>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
 </body>
 </html>
