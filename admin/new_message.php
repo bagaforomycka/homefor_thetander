@@ -242,8 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </div>
                             </div>
 
-                            <!-- 2. Message Body -->
-                            <div class="section-title">Message Body</div>
+                            <!-- 2. Message Content -->                            
                             <div class="row g-3 mb-4">
                                 <div class="col-12">
                                     <label class="form-label">Message Content</label>
