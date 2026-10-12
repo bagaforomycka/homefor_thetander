@@ -179,9 +179,9 @@ function sidebarLink(
         );
 
         sidebarLink(
-            '/homefor_thetander/admin/caretakers.php',
+            '/homefor_thetander/admin/caretakers_staff.php',
             'Caretakers & Staff',
-            'caretakers.php',
+            'caretakers_staff.php',
             $currentPage
         );
 
