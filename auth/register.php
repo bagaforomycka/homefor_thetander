@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Account | Home for the Tender</title>
+    <title>Create Account | Home for the Aged</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
           rel="stylesheet">
@@ -135,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="container">
     <div class="register-card">
-        <h2 class="brand text-center">Home for the Tender</h2>
+        <h2 class="brand text-center">Home for the Aged</h2>
         <h4 class="text-center mb-4">Create an Account</h4>
 
         <?php if ($error !== ''): ?>

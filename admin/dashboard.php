@@ -157,7 +157,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
 <div class="dashboard-heading">
     <h1>Admin Dashboard</h1>
-    <p>Welcome to the Home for the Tender Care Management System.</p>
+    <p>Welcome to the Home for the Aged Care Management System.</p>
 </div>
 
 <div class="row g-4">

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Terms and Conditions | Home for the Tender</title>
+    <title>Terms and Conditions | Home for the Aged</title>
 
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
@@ -111,7 +111,7 @@
 <nav class="navbar">
     <div class="container py-2">
         <a class="navbar-brand text-decoration-none" href="index.php">
-            <span class="brand-name">🏡 Home for the Tender</span>
+            <span class="brand-name">🏡 Home for the Aged</span>
             <span class="brand-tagline d-block">CARE · COMFORT · DIGNITY</span>
         </a>
     </div>
@@ -136,7 +136,7 @@
         </a>
 
         <p>
-            <strong>Home for the Tender</strong> aims to support organized
+            <strong>Home for the Aged</strong> aims to support organized
             resident care while protecting the dignity and privacy of residents.
             These terms describe expectations for using this website.
         </p>
@@ -232,11 +232,11 @@
 <!-- Matching footer -->
 <footer>
     <div class="container text-center">
-        <strong>🏡 Home for the Tender</strong>
+        <strong>⌂♡ Home for the Aged</strong>
         <p class="mb-2 mt-2">Care · Comfort · Dignity</p>
         <a href="index.php#login">Back to Login</a>
         <span class="mx-2">|</span>
-        <span>© <?= date('Y') ?> Home for the Tender</span>
+        <span>© <?= date('Y') ?> Home for the Aged</span>
     </div>
 </footer>
 

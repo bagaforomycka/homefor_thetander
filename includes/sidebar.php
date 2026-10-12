@@ -1,19 +1,25 @@
+
 <?php
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 if (!isset($_SESSION['user_id'], $_SESSION['role'])) {
-    header('Location: ../index.php');
+    header('Location: /homefor_thetander/index.php');
     exit;
 }
 
 $currentRole = $_SESSION['role'];
 $currentPage = basename($_SERVER['PHP_SELF']);
 
-function sidebarLink(string $href, string $label, string $page, string $currentPage): void
-{
+function sidebarLink(
+    string $href,
+    string $label,
+    string $page,
+    string $currentPage
+): void {
     $active = ($page === $currentPage) ? 'active' : '';
+
     echo '<a class="sidebar-link ' . $active . '" href="' .
         htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">' .
         htmlspecialchars($label, ENT_QUOTES, 'UTF-8') .
@@ -25,9 +31,12 @@ function sidebarLink(string $href, string $label, string $page, string $currentP
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Home for the Tender</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet">
+    <title>Home for the Aged</title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
 
     <style>
         :root {
@@ -93,7 +102,7 @@ function sidebarLink(string $href, string $label, string $page, string $currentP
 
         .sidebar-link:hover,
         .sidebar-link.active {
-            background: rgba(255,255,255,.22);
+            background: rgba(255, 255, 255, .22);
             color: white;
         }
 
@@ -142,36 +151,154 @@ function sidebarLink(string $href, string $label, string $page, string $currentP
     <?php if (in_array($currentRole, ['admin', 'staff'], true)): ?>
 
         <div class="sidebar-section">Main Menu</div>
-        <?php sidebarLink('dashboard.php', 'Dashboard', 'dashboard.php', $currentPage); ?>
-        <?php sidebarLink('residents.php', 'Resident Management', 'residents.php', $currentPage); ?>
+
+        <?php
+        sidebarLink(
+            '/homefor_thetander/admin/dashboard.php',
+            'Dashboard',
+            'dashboard.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/admin/residents.php',
+            'Resident Management',
+            'residents.php',
+            $currentPage
+        );
+        ?>
 
         <div class="sidebar-section">Care Management</div>
-        <?php sidebarLink('health_records.php', 'Health Records', 'health_records.php', $currentPage); ?>
-        <?php sidebarLink('caretakers.php', 'Caretakers & Staff', 'caretakers.php', $currentPage); ?>
-        <?php sidebarLink('schedules.php', 'Schedules', 'schedules.php', $currentPage); ?>
-        <?php sidebarLink('messages.php', 'Messages', 'messages.php', $currentPage); ?>
-        <?php sidebarLink('reports.php', 'Reports', 'reports.php', $currentPage); ?>
+
+        <?php
+        sidebarLink(
+            '/homefor_thetander/admin/health_records.php',
+            'Health Records',
+            'health_records.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/admin/caretakers.php',
+            'Caretakers & Staff',
+            'caretakers.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/admin/schedules.php',
+            'Schedules',
+            'schedules.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/admin/messages.php',
+            'Messages',
+            'messages.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/admin/reports.php',
+            'Reports',
+            'reports.php',
+            $currentPage
+        );
+        ?>
 
         <div class="sidebar-section">Administration</div>
-        <?php sidebarLink('settings.php', 'Settings', 'settings.php', $currentPage); ?>
+
+        <?php
+        sidebarLink(
+            '/homefor_thetander/admin/settings.php',
+            'Settings',
+            'settings.php',
+            $currentPage
+        );
+        ?>
 
     <?php elseif ($currentRole === 'caretaker'): ?>
 
         <div class="sidebar-section">Care Menu</div>
-        <?php sidebarLink('../caretaker/dashboard.php', 'Dashboard', 'dashboard.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/my_residents.php', 'My Residents', 'my_residents.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/care_tasks.php', 'Care Tasks', 'care_tasks.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/my_schedule.php', 'My Schedule', 'my_schedule.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/health_information.php', 'Health Information', 'health_information.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/messages.php', 'Messages', 'messages.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/care_reports.php', 'Care Reports', 'care_reports.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/incident_reports.php', 'Incident Reports', 'incident_reports.php', $currentPage); ?>
-        <?php sidebarLink('../caretaker/profile.php', 'My Profile', 'profile.php', $currentPage); ?>
+
+        <?php
+        sidebarLink(
+            '/homefor_thetander/caretaker/dashboard.php',
+            'Dashboard',
+            'dashboard.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/my_residents.php',
+            'My Residents',
+            'my_residents.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/care_tasks.php',
+            'Care Tasks',
+            'care_tasks.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/my_schedule.php',
+            'My Schedule',
+            'my_schedule.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/health_information.php',
+            'Health Information',
+            'health_information.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/messages.php',
+            'Messages',
+            'messages.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/care_reports.php',
+            'Care Reports',
+            'care_reports.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/incident_reports.php',
+            'Incident Reports',
+            'incident_reports.php',
+            $currentPage
+        );
+
+        sidebarLink(
+            '/homefor_thetander/caretaker/profile.php',
+            'My Profile',
+            'profile.php',
+            $currentPage
+        );
+        ?>
 
     <?php endif; ?>
 
     <div class="sidebar-section">Account</div>
-    <?php sidebarLink('../auth/logout.php', 'Logout', 'logout.php', $currentPage); ?>
+
+    <?php
+    sidebarLink(
+        '/homefor_thetander/logout.php',
+        'Logout',
+        'logout.php',
+        $currentPage
+    );
+    ?>
 </aside>
 
 <main class="app-main">

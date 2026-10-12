@@ -1,13 +1,15 @@
+
 <?php
 session_start();
 
+// Redirect users who are already logged in.
 if (isset($_SESSION['user_id'], $_SESSION['role'])) {
     if ($_SESSION['role'] === 'caretaker') {
         header('Location: caretaker/dashboard.php');
         exit;
     }
 
-    if (in_array($_SESSION['role'], ['admin', 'staff'], true)) {
+    if ($_SESSION['role'] === 'admin') {
         header('Location: admin/dashboard.php');
         exit;
     }
@@ -19,9 +21,8 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Home for the Tender | Compassionate Care</title>
+    <title>Home for the Aged | Compassionate Care</title>
 
-    <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
           rel="stylesheet">
 
@@ -94,20 +95,23 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             background: #fff;
             border: 1px solid #e1eee3;
             border-radius: 18px;
-            box-shadow: 0 12px 35px rgba(28, 90, 48, .12);
+            box-shadow: 0 12px 35px rgba(28,90,48,.12);
         }
 
-        .login-title, .section-title {
+        .login-title,
+        .section-title {
             color: var(--dark-green);
             font-weight: 700;
         }
 
-        .form-control, .form-select {
+        .form-control,
+        .form-select {
             padding: 12px;
             border-radius: 8px;
         }
 
-        .form-control:focus, .form-select:focus {
+        .form-control:focus,
+        .form-select:focus {
             border-color: var(--green);
             box-shadow: 0 0 0 .2rem rgba(51,185,96,.16);
         }
@@ -212,14 +216,14 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 <nav class="navbar navbar-expand-lg sticky-top">
     <div class="container py-2">
         <a class="navbar-brand text-decoration-none" href="index.php">
-            <span class="brand-name">🏡 Home for the Tender</span>
+            <span class="brand-name">⌂♡ Home for the Aged</span>
             <span class="brand-tagline d-block">CARE · COMFORT · DIGNITY</span>
         </a>
 
         <div class="ms-auto d-flex gap-2 align-items-center">
             <a href="#what-we-offer"
-               class="btn btn-outline-success btn-sm">Our Services</a>
-            <a href="#login" class="btn btn-success btn-sm">Log In</a>
+            <a href="#login"
+               class="btn btn-success btn-sm">Log In</a>
         </div>
     </div>
 </nav>
@@ -239,7 +243,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                 </h1>
 
                 <p class="hero-description mt-4">
-                    At Home for the Tender, we believe every senior deserves
+                    At Home for the Aged, we believe every senior deserves
                     to feel safe, respected, valued, and loved. We aim to
                     provide a welcoming environment where residents can
                     experience comfort, dignity, and meaningful connections.
@@ -267,51 +271,66 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                 <div class="login-card">
 
                     <div class="text-center mb-4">
-                        <div class="display-6">💚</div>
+                        <div class="display-6">♡</div>
                         <h2 class="login-title">Welcome Back</h2>
                         <p class="text-secondary">
-                            Log in to your account to continue.
+                          
                         </p>
                     </div>
 
                     <form action="auth/login.php" method="POST">
+
                         <div class="mb-3">
                             <label for="role" class="form-label fw-semibold">
                                 Account Role
                             </label>
-                            <select class="form-select" id="role"
-                                    name="role" required>
+
+                            <select class="form-select"
+                                    id="role"
+                                    name="role"
+                                    required>
                                 <option value="">Select your role</option>
                                 <option value="admin">Admin</option>
-                                <option value="staff">Staff</option>
                                 <option value="caretaker">Caretaker</option>
                             </select>
                         </div>
 
                         <div class="mb-3">
-                            <label for="username" class="form-label fw-semibold">
+                            <label for="username"
+                                   class="form-label fw-semibold">
                                 Username
                             </label>
-                            <input type="text" class="form-control"
-                                   id="username" name="username"
+
+                            <input type="text"
+                                   class="form-control"
+                                   id="username"
+                                   name="username"
                                    placeholder="Enter your username"
-                                   autocomplete="username" required>
+                                   autocomplete="username"
+                                   required>
                         </div>
 
                         <div class="mb-3">
-                            <label for="password" class="form-label fw-semibold">
+                            <label for="password"
+                                   class="form-label fw-semibold">
                                 Password
                             </label>
-                            <input type="password" class="form-control"
-                                   id="password" name="password"
+
+                            <input type="password"
+                                   class="form-control"
+                                   id="password"
+                                   name="password"
                                    placeholder="Enter your password"
-                                   autocomplete="current-password" required>
+                                   autocomplete="current-password"
+                                   required>
                         </div>
 
                         <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox"
+                            <input class="form-check-input"
+                                   type="checkbox"
                                    id="showPassword"
                                    onchange="togglePassword()">
+
                             <label class="form-check-label"
                                    for="showPassword">
                                 Show password
@@ -319,20 +338,27 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                         </div>
 
                         <div class="form-check mb-4">
-                            <input class="form-check-input" type="checkbox"
-                                   id="accept_terms" name="accept_terms"
-                                   value="1" required>
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="accept_terms"
+                                   name="accept_terms"
+                                   value="1"
+                                   required>
+
                             <label class="form-check-label"
                                    for="accept_terms">
                                 I have read and agree to the
-                                <a href="terms.php" target="_blank"
-                                   rel="noopener" class="green-link">
+                                <a href="terms.php"
+                                   target="_blank"
+                                   rel="noopener"
+                                   class="green-link">
                                     Terms and Conditions
                                 </a>.
                             </label>
                         </div>
 
-                        <button type="submit" class="btn btn-green w-100">
+                        <button type="submit"
+                                class="btn btn-green w-100">
                             Log In
                         </button>
                     </form>
@@ -346,10 +372,12 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
                     <p class="text-center small mt-3 mb-0">
                         Forgot your password?
-                        <a href="auth/forgot_password.php" class="green-link">
+                        <a href="auth/forgot_password.php"
+                           class="green-link">
                             Reset it here
                         </a>
                     </p>
+
                 </div>
             </div>
 
@@ -360,6 +388,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 <!-- What we offer -->
 <section class="offers" id="what-we-offer">
     <div class="container">
+
         <div class="text-center mb-5">
             <h2 class="section-title display-6">What We Offer</h2>
             <p class="text-secondary mt-3">
@@ -369,6 +398,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
         </div>
 
         <div class="row g-4">
+
             <div class="col-sm-6 col-lg-3">
                 <div class="offer-card text-center">
                     <div class="offer-icon">🏡</div>
@@ -382,7 +412,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
             <div class="col-sm-6 col-lg-3">
                 <div class="offer-card text-center">
-                    <div class="offer-icon">❤️</div>
+                    <div class="offer-icon">♡</div>
                     <h5>Health Information</h5>
                     <p class="text-secondary mb-0">
                         Organized health information for authorized
@@ -393,7 +423,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
             <div class="col-sm-6 col-lg-3">
                 <div class="offer-card text-center">
-                    <div class="offer-icon">🤝</div>
+                    <div class="offer-icon">🫱🏿‍🫲🏻</div>
                     <h5>Dedicated Caregivers</h5>
                     <p class="text-secondary mb-0">
                         Caregiving guided by kindness, respect,
@@ -404,7 +434,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
             <div class="col-sm-6 col-lg-3">
                 <div class="offer-card text-center">
-                    <div class="offer-icon">🌷</div>
+                    <div class="offer-icon">✿</div>
                     <h5>Activities and Well-being</h5>
                     <p class="text-secondary mb-0">
                         Opportunities for social connection,
@@ -412,35 +442,40 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                     </p>
                 </div>
             </div>
+
         </div>
 
         <div class="text-center mt-5">
-            <h4 class="section-title">Care with Compassion. Support with Dignity.</h4>
+            <h4 class="section-title">
+                Care with Compassion. Support with Dignity.
+            </h4>
+
             <p class="text-secondary">
                 Because a caring home is more than a place to stay —
                 it is a place to belong.
             </p>
-            <a href="#login" class="btn btn-green px-4 mt-2">
-                Log In to Continue
+
             </a>
         </div>
+
     </div>
 </section>
 
 <!-- Footer -->
 <footer>
     <div class="container text-center">
-        <strong>🏡 Home for the Tender</strong>
+        <strong>⌂♡ Home for the Aged</strong>
         <p class="mb-2 mt-2">Care · Comfort · Dignity</p>
         <a href="terms.php">Terms and Conditions</a>
         <span class="mx-2">|</span>
-        <span>© <?= date('Y') ?> Home for the Tender</span>
+        <span>© <?= date('Y') ?> Home for the Aged</span>
     </div>
 </footer>
 
 <script>
 function togglePassword() {
     const field = document.getElementById('password');
+
     field.type = document.getElementById('showPassword').checked
         ? 'text'
         : 'password';

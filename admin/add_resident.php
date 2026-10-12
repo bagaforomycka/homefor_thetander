@@ -3,7 +3,7 @@ session_start();
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    !in_array($_SESSION['role'], ['admin', 'staff'], true)
+    !in_array($_SESSION['role'], ['admin'], true)
 ) {
     header('Location: ../index.php');
     exit;
@@ -32,7 +32,6 @@ $values = [
     'admission_date' => date('Y-m-d'),
     'care_level' => '',
     'assigned_caretaker' => '',
-    'assigned_staff' => '',
     'status' => 'Active'
 ];
 
@@ -112,12 +111,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         resident_id, first_name, middle_name, last_name,
                         date_of_birth, gender, contact_number, address,
                         room_number, admission_date, care_level,
-                        assigned_caretaker, assigned_staff, status
+                        assigned_caretaker, status
                     ) VALUES (
                         :resident_id, :first_name, :middle_name, :last_name,
                         :date_of_birth, :gender, :contact_number, :address,
                         :room_number, :admission_date, :care_level,
-                        :assigned_caretaker, :assigned_staff, :status
+                        :assigned_caretaker, :status
                     )'
                 );
 
@@ -134,7 +133,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'admission_date' => $values['admission_date'] ?: null,
                     'care_level' => $values['care_level'] ?: null,
                     'assigned_caretaker' => $values['assigned_caretaker'] ?: null,
-                    'assigned_staff' => $values['assigned_staff'] ?: null,
                     'status' => $values['status']
                 ]);
 
@@ -153,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Add Resident | Home for the Tender</title>
+    <title>Add Resident | Home for the Aged</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
           rel="stylesheet">
     <style>
@@ -165,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow: 0 3px 14px rgba(0,0,0,.06);
         }
         .page-heading {
-            background: #33b960;
+            background: #1e8841;
             color: white;
             border-radius: 14px;
             padding: 22px;
@@ -284,12 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        value="<?= e($values['assigned_caretaker']) ?>">
             </div>
 
-            <div class="col-md-6">
-                <label class="form-label" for="assigned_staff">Assigned Staff</label>
-                <input class="form-control" id="assigned_staff"
-                       name="assigned_staff" maxlength="100"
-                       value="<?= e($values['assigned_staff']) ?>">
-            </div>
+
 
             <div class="col-md-6">
                 <label class="form-label" for="status">Status</label>

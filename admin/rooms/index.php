@@ -302,7 +302,7 @@ if (isset($_GET['success'])) {
 
         .status-maintenance {
             background: #f8d7da;
-            color: #842029;
+            color: #ffdde0;
         }
     </style>
 </head>
