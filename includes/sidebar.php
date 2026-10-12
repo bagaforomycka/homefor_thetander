@@ -218,6 +218,17 @@ function sidebarLink(
         );
         ?>
 
+        <div class="sidebar-section">Data Management</div>
+
+        <?php
+        sidebarLink(
+            '/homefor_thetander/admin/archive.php',
+            '🗃 Archive & Restore',
+            'archive.php',
+            $currentPage
+        );
+        ?>
+
     <?php elseif ($currentRole === 'caretaker'): ?>
 
         <div class="sidebar-section">Care Menu</div>

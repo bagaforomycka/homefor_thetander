@@ -42,6 +42,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' &&
         $error = 'Invalid health record selected.';
     }
 }
+/* Archive a health record instead of permanently deleting it */
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    ($_POST['action'] ?? '') === 'delete'
+) {
+    if ($_SESSION['role'] !== 'admin') {
+        http_response_code(403);
+        exit('Only an administrator can archive health records.');
+    }
+
+    $recordId = filter_input(
+        INPUT_POST,
+        'record_id',
+        FILTER_VALIDATE_INT
+    );
+
+    if ($recordId) {
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE health_records
+                SET archived_at = NOW()
+                WHERE id = :id
+                  AND archived_at IS NULL
+            ");
+
+            $stmt->execute(['id' => $recordId]);
+
+            header('Location: health_records.php?success=archived');
+            exit;
+        } catch (PDOException $e) {
+            error_log('Health record archive error: ' . $e->getMessage());
+            $error = 'Unable to archive this health record.';
+        }
+    } else {
+        $error = 'Invalid health record selected.';
+    }
+}
+
 
 /* Fetch health records and resident details */
 $sql = "
@@ -63,7 +101,8 @@ $sql = "
         r.room_number
     FROM health_records hr
     INNER JOIN residents r ON r.id = hr.resident_id
-    WHERE 1 = 1
+    WHERE hr.archived_at IS NULL
+  AND r.archived_at IS NULL
 ";
 
 $params = [];
@@ -268,6 +307,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="alert alert-success">Health record added successfully.</div>
 <?php elseif ($success === 'updated'): ?>
     <div class="alert alert-success">Health record updated successfully.</div>
+<?php elseif ($success === 'archived'): ?>
+    <div class="alert alert-success">Health record archived successfully.</div>
 <?php elseif ($success === 'deleted'): ?>
     <div class="alert alert-success">Health record deleted successfully.</div>
 <?php endif; ?>
