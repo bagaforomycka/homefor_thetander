@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -31,7 +30,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             --green: #33b960;
             --dark-green: #17683a;
             --pale-green: #edf8ef;
-            --text: #304b3b;
+            --text: #22382c;
         }
 
         html {
@@ -41,13 +40,18 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
         body {
             margin: 0;
-            background: #f8fbf8;
+            background-color: #f8fbf8;
+            background-image: url('images/bg.jpg'); 
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             color: var(--text);
             font-family: Arial, sans-serif;
         }
 
         .navbar {
-            background: #fff;
+            background: rgba(255, 255, 255, 0.92);
             box-shadow: 0 2px 12px rgba(0,0,0,.06);
         }
 
@@ -63,8 +67,9 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             letter-spacing: 2px;
         }
 
+        /* Fully transparent hero section so background photo shows through clearly */
         .hero {
-            background: linear-gradient(120deg, #eaf7ec, #fff 60%, #e3f3e4);
+            background: transparent; 
             padding: 65px 0;
         }
 
@@ -73,12 +78,15 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             font-size: clamp(2.2rem, 4vw, 3.5rem);
             font-weight: 700;
             line-height: 1.18;
+            text-shadow: 0 2px 4px rgba(255, 255, 255, 0.8); /* Crisp pop against the photo */
         }
 
         .hero-description {
-            color: #506b59;
+            color: #263e30;
             font-size: 1.05rem;
             line-height: 1.85;
+            font-weight: 600;
+            text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9);
         }
 
         .hero-quote {
@@ -86,16 +94,18 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             padding: 12px 16px;
             color: var(--dark-green);
             font-style: italic;
-            background: rgba(255,255,255,.65);
+            background: rgba(255, 255, 255, 0.9);
             border-radius: 0 8px 8px 0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
 
+        /* Semi-transparent login card to keep inputs clear */
         .login-card {
             padding: 32px;
-            background: #fff;
+            background: rgba(255, 255, 255, 0.92);
             border: 1px solid #e1eee3;
             border-radius: 18px;
-            box-shadow: 0 12px 35px rgba(28,90,48,.12);
+            box-shadow: 0 12px 35px rgba(28,90,48,.15);
         }
 
         .login-title,
@@ -108,6 +118,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
         .form-select {
             padding: 12px;
             border-radius: 8px;
+            background: rgba(255, 255, 255, 0.95);
         }
 
         .form-control:focus,
@@ -137,6 +148,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             border-radius: 8px;
             padding: 11px;
             font-weight: 700;
+            background: rgba(255, 255, 255, 0.8);
         }
 
         .btn-outline-green:hover {
@@ -148,23 +160,25 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             color: var(--dark-green);
         }
 
+        /* Transparent offers section */
         .offers {
             padding: 65px 0;
-            background: #fff;
+            background: transparent;
         }
 
         .offer-card {
             height: 100%;
             padding: 28px 20px;
-            border: 1px solid #e3eee4;
+            border: 1px solid rgba(227, 238, 228, 0.6);
             border-radius: 15px;
-            background: #f8fbf8;
+            background: rgba(248, 251, 248, 0.88);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03);
             transition: transform .2s, box-shadow .2s;
         }
 
         .offer-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 8px 20px rgba(25,90,45,.08);
+            box-shadow: 0 8px 20px rgba(25,90,45,.1);
         }
 
         .offer-icon {
@@ -221,9 +235,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
         </a>
 
         <div class="ms-auto d-flex gap-2 align-items-center">
-            <a href="#what-we-offer"
-            <a href="#login"
-               class="btn btn-success btn-sm">Log In</a>
+            <a href="#login" class="btn btn-success btn-sm">Log In</a>
         </div>
     </div>
 </nav>
@@ -273,9 +285,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                     <div class="text-center mb-4">
                         <div class="display-6">♡</div>
                         <h2 class="login-title">Welcome Back</h2>
-                        <p class="text-secondary">
-                          
-                        </p>
+                        <p class="text-secondary"></p>
                     </div>
 
                     <form action="auth/login.php" method="POST">
@@ -454,8 +464,6 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                 Because a caring home is more than a place to stay —
                 it is a place to belong.
             </p>
-
-            </a>
         </div>
 
     </div>
