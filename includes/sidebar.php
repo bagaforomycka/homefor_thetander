@@ -172,6 +172,13 @@ function sidebarLink(
 
         <?php
         sidebarLink(
+            '/homefor_thetander/admin/rooms.php',
+            'Rooms',
+            'rooms.php',
+            $currentPage
+        );
+
+        sidebarLink(
             '/homefor_thetander/admin/health_records.php',
             'Health Records',
             'health_records.php',
@@ -223,7 +230,7 @@ function sidebarLink(
         <?php
         sidebarLink(
             '/homefor_thetander/admin/archive.php',
-            '🗃 Archive & Restore',
+            'Archive & Restore',
             'archive.php',
             $currentPage
         );
