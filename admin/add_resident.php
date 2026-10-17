@@ -246,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .page-heading {
-            background: #1e8841;
+            background: #304b3b;
             color: white;
             border-radius: 14px;
             padding: 22px;
