@@ -286,7 +286,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             ← Back to Dashboard
         </a>
 
-        <a href="add_residents.php" class="btn btn-success">
+        <a href="add_resident.php" class="btn btn-success">
             + Add Resident
         </a>
     </div>
@@ -437,7 +437,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     >View</a>
 
                     <a
-                        href="add_residents.php?edit=<?= (int)$resident['id'] ?>"
+                        href="add_resident.php?edit=<?= (int)$resident['id'] ?>"
                         class="btn btn-resident-edit"
                     >Edit</a>
 

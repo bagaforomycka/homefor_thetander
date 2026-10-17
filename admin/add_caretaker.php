@@ -1,4 +1,4 @@
-
+ 
 <?php
 session_start();
 
@@ -19,7 +19,20 @@ function e($value): string
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
+if (empty($_SESSION['add_caretaker_csrf'])) {
+    $_SESSION['add_caretaker_csrf'] = bin2hex(random_bytes(32));
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $token = $_POST['csrf_token'] ?? '';
+
+    if (
+        !is_string($token) ||
+        !hash_equals($_SESSION['add_caretaker_csrf'], $token)
+    ) {
+        $errors[] = 'Your session security token is invalid. Refresh the page and try again.';
+    }
+
     $employeeId = trim($_POST['employee_id'] ?? '');
     $firstName = trim($_POST['first_name'] ?? '');
     $lastName = trim($_POST['last_name'] ?? '');
@@ -59,43 +72,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Password must be at least 8 characters long.';
     }
 
-    if ($username !== '' && !preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
+    if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
         $errors[] = 'Username may contain only letters, numbers, dots, underscores, and hyphens.';
     }
 
     if (!$errors) {
         try {
             $checkUsername = $pdo->prepare(
-                "SELECT username
-                 FROM users
-                 WHERE username = :user_username
+                "SELECT username FROM users WHERE username = :username1
                  UNION
-                 SELECT username
-                 FROM caretakers
-                 WHERE username = :caretaker_username"
+                 SELECT username FROM caretakers WHERE username = :username2"
             );
 
             $checkUsername->execute([
-                'user_username' => $username,
-                'caretaker_username' => $username
+                'username1' => $username,
+                'username2' => $username
             ]);
 
-            if ($checkUsername->fetch()) {
+            if ($checkUsername->fetchColumn() !== false) {
                 $errors[] = 'That username already exists. Please choose another.';
             }
 
             $checkEmployee = $pdo->prepare(
-                "SELECT id
-                 FROM caretakers
+                "SELECT id FROM caretakers
                  WHERE employee_id = :employee_id
                  LIMIT 1"
             );
 
-            $checkEmployee->execute([
-                'employee_id' => $employeeId
-            ]);
+            $checkEmployee->execute(['employee_id' => $employeeId]);
 
-            if ($checkEmployee->fetch()) {
+            if ($checkEmployee->fetchColumn() !== false) {
                 $errors[] = 'That Employee ID already exists.';
             }
 
@@ -103,21 +109,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $fullName = trim($firstName . ' ' . $lastName);
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-                $userStatus = ($employmentStatus === 'Active')
+                $userStatus = $employmentStatus === 'Active'
                     ? 'active'
                     : 'inactive';
 
                 $pdo->beginTransaction();
 
                 $insertCaretaker = $pdo->prepare(
-                    "INSERT INTO caretakers
-                    (
+                    "INSERT INTO caretakers (
                         employee_id, full_name, contact, address,
                         position, shift, status, username, password,
                         archived_at
-                    )
-                    VALUES
-                    (
+                    ) VALUES (
                         :employee_id, :full_name, :contact, :address,
                         :position, :shift, :status, :username, :password,
                         NULL
@@ -138,9 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $insertUser = $pdo->prepare(
                     "INSERT INTO users
-                    (full_name, username, password, role, status)
-                    VALUES
-                    (:full_name, :username, :password, :role, :status)"
+                        (full_name, username, password, role, status)
+                     VALUES
+                        (:full_name, :username, :password, :role, :status)"
                 );
 
                 $insertUser->execute([
@@ -153,6 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $pdo->commit();
 
+                // Prevent resubmission and redirect to caretaker management.
                 header('Location: caretakers_staff.php?created=1');
                 exit;
             }
@@ -176,6 +180,7 @@ $selectedStatus = $_POST['status'] ?? 'Active';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Add Caretaker | Home for the Aged</title>
 
     <link
@@ -196,121 +201,92 @@ $selectedStatus = $_POST['status'] ?? 'Active';
         }
 
         /*
-         * Assumes the sidebar is approximately 250px wide.
-         * Adjust this value if your existing sidebar uses a different width.
+         * The sidebar is supplied by includes/sidebar.php.
+         * Keep the content beside it and use the full remaining width.
          */
-
-
-
-/* Main content positioning */
-.page-content {
-    margin-left: 236px;
-    width: calc(100% - 236px);
-    min-height: 100vh;
-    padding: 12px 20px;
-    box-sizing: border-box;
-}
-
-/* Center the white card and move it left */
+       
 .form-card {
-    width: calc(100% - 40px);
-    max-width: 1000px;
-    margin: 8px auto 20px;
-    position: relative;
-    left: -35px;
+    display: block;
+    width: 100%;
+    max-width: none;
+    margin: 0 0 20px;
+    position: static;
+    left: auto;
     background: #ffffff;
-    border: 1px solid #d9e4dc;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e3eee6;
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(24, 75, 42, 0.05);
     overflow: hidden;
     box-sizing: border-box;
 }
 
-/* Main green title bar */
-.card-heading {
-    display: block;
-    width: 100%;
-    background: #17683a;
-    color: #ffffff;
-    padding: 18px 24px;
-}
 
-.card-heading h4 {
-    margin: 0;
-    color: #ffffff;
-    font-size: 23px;
-    font-weight: 700;
-}
+        /* Wide green heading, like the Add Health Record page. */
+        .page-heading {
+            width: 100%;
+            background: #2d6042;
+            color: #fff;
+            border-radius: 14px;
+            padding: 21px 22px;
+            margin: 0 0 22px;
+        }
 
-/* Restore green section heading bars */
-.section-title {
-    display: block;
-    width: 100%;
-    color: #17683a;
-    font-size: 18px;
-    font-weight: 700;
-    background: #edf8ef;
-    border-left: 5px solid #28a745;
-    border-bottom: 1px solid #dcecdf;
-    padding: 12px 15px;
-    margin: 22px 0;
-}
+        .page-heading h1 {
+            color: #fff;
+            font-size: 28px;
+            font-weight: 600;
+            margin: 0 0 6px;
+        }
 
-/* Form area */
-.card-body {
-    padding: 24px;
-    background: #ffffff;
-}
+        .page-heading p {
+            color: #fff;
+            margin: 0;
+        }
 
-/* Green Save Caretaker button */
-.btn-save {
-    background-color: #28a745;
-    border: 1px solid #28a745;
-    color: #ffffff;
-}
+        /* Full-width white form panel. */
+        .form-card {
+            width: 100%;
+            max-width: none;
+            margin: 0 0 20px;
+            position: static;
+            background: #fff;
+            border: 1px solid #e3eee6;
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(24, 75, 42, 0.05);
+            overflow: hidden;
+        }
 
-.btn-save:hover {
-    background-color: #218838;
-    border-color: #1e7e34;
-    color: #ffffff;
-}
+        .card-body {
+            padding: 24px;
+            background: #fff;
+        }
 
-@media (max-width: 768px) {
-    .page-content {
-        margin-left: 0;
-        width: 100%;
-        padding: 12px;
-    }
-
-    .form-card {
-        width: 100%;
-        max-width: 100%;
-        left: 0;
-        margin: 0 auto;
-    }
-
-    .card-body {
-        padding: 18px;
-    }
-}
-
-
+        /* Light-green section bars. */
         .section-title {
+            width: 100%;
             color: #17683a;
             font-size: 18px;
             font-weight: 700;
+            background: #edf8ef;
+            border-left: 5px solid #28a745;
             border-bottom: 1px solid #dcecdf;
-            padding-bottom: 10px;
-            margin: 22px 0;
+            padding: 12px 15px;
+            margin: 0 0 22px;
+        }
+
+        .section-title:not(:first-child) {
+            margin-top: 27px;
         }
 
         .form-label {
             color: #17683a;
             font-weight: 600;
+            margin-bottom: 8px;
         }
 
         .form-control,
         .form-select {
+            width: 100%;
             min-height: 42px;
             border-color: #cedbd1;
         }
@@ -325,81 +301,85 @@ $selectedStatus = $_POST['status'] ?? 'Active';
             min-height: 75px;
         }
 
-        /* Consistent sizing for all action buttons */
+        .password-group .form-control {
+            min-width: 0;
+        }
+
+        .password-group .btn {
+            min-width: 72px;
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 24px;
+        }
+
         .action-btn {
-            min-height: 43px;
-            padding: 10px 22px;
+            min-height: 40px;
+            padding: 8px 14px;
             border-radius: 6px;
-            font-weight: 600;
+            font-weight: 500;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             text-decoration: none;
             cursor: pointer;
-            transition: background-color 0.15s ease;
         }
 
-        /* Save Caretaker: green background and white text */
         .btn-save {
-            background-color: #28a745;
-            border: 1px solid #28a745;
-            color: #ffffff;
+            background: #198754;
+            border: 1px solid #198754;
+            color: #fff;
         }
 
         .btn-save:hover,
         .btn-save:focus {
-            background-color: #218838;
-            border-color: #1e7e34;
-            color: #ffffff;
+            background: #157347;
+            border-color: #146c43;
+            color: #fff;
         }
 
-        /* Cancel: white background with green outline */
         .btn-cancel {
-            background-color: #ffffff;
-            border: 1px solid #17683a;
-            color: #17683a;
+            background: #fff;
+            border: 1px solid #87928b;
+            color: #65716a;
         }
 
         .btn-cancel:hover {
-            background-color: #edf8ef;
-            border-color: #17683a;
-            color: #17683a;
-        }
-
-        .password-group .form-control {
-            border-top-right-radius: 0;
-            border-bottom-right-radius: 0;
-        }
-
-        .password-group .btn {
-            min-width: 72px;
-            border-top-left-radius: 0;
-            border-bottom-left-radius: 0;
+            background: #f1f4f2;
+            color: #304b3b;
         }
 
         .form-alert {
-            max-width: 1150px;
-            margin: 0 auto 18px;
+            margin-bottom: 18px;
         }
 
         @media (max-width: 768px) {
             .page-content {
                 margin-left: 0;
-                padding: 18px 12px;
+                width: 100%;
+                padding: 16px 12px;
+            }
+
+            .page-heading {
+                padding: 18px;
+            }
+
+            .page-heading h1 {
+                font-size: 24px;
             }
 
             .card-body {
                 padding: 18px;
             }
 
-            .card-heading {
-                padding: 17px 18px;
-            }
-
             .form-actions {
-                display: flex;
                 flex-direction: column-reverse;
-                gap: 10px;
+                align-items: stretch;
             }
 
             .form-actions .action-btn {
@@ -415,6 +395,11 @@ $selectedStatus = $_POST['status'] ?? 'Active';
 
 <main class="page-content">
 
+    <header class="page-heading">
+        <h1>Add Caretaker</h1>
+        <p>Enter the caretaker's information below.</p>
+    </header>
+
     <?php if ($errors): ?>
         <div class="alert alert-danger form-alert" role="alert">
             <strong>Please correct the following:</strong>
@@ -426,21 +411,23 @@ $selectedStatus = $_POST['status'] ?? 'Active';
         </div>
     <?php endif; ?>
 
-    <!-- Only ONE card container: prevents nested white-card sizing issues -->
     <section class="form-card">
-
-        <div class="card-heading">
-            <h4>Add Caretaker</h4>
-        </div>
-
         <div class="card-body">
-            <form method="POST" action="" autocomplete="off">
 
-                <h5 class="section-title">Personal Information</h5>
+            <form method="POST" action="" autocomplete="off">
+                <input
+                    type="hidden"
+                    name="csrf_token"
+                    value="<?= e($_SESSION['add_caretaker_csrf']) ?>"
+                >
+
+                <h2 class="section-title">Personal Information</h2>
 
                 <div class="row g-3">
-                    <div class="col-md-4">
-                        <label for="employee_id" class="form-label">Employee ID *</label>
+                    <div class="col-md-6">
+                        <label for="employee_id" class="form-label">
+                            Employee ID *
+                        </label>
                         <input
                             type="text"
                             class="form-control"
@@ -451,8 +438,10 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                         >
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="first_name" class="form-label">First Name *</label>
+                    <div class="col-md-6">
+                        <label for="first_name" class="form-label">
+                            First Name *
+                        </label>
                         <input
                             type="text"
                             class="form-control"
@@ -463,8 +452,10 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                         >
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="last_name" class="form-label">Last Name *</label>
+                    <div class="col-md-6">
+                        <label for="last_name" class="form-label">
+                            Last Name *
+                        </label>
                         <input
                             type="text"
                             class="form-control"
@@ -476,7 +467,9 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                     </div>
 
                     <div class="col-md-6">
-                        <label for="contact" class="form-label">Contact Number</label>
+                        <label for="contact" class="form-label">
+                            Contact Number
+                        </label>
                         <input
                             type="text"
                             class="form-control"
@@ -497,7 +490,7 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                     </div>
                 </div>
 
-                <h5 class="section-title">Employment Details</h5>
+                <h2 class="section-title">Employment Details</h2>
 
                 <div class="row g-3">
                     <div class="col-md-6">
@@ -513,7 +506,12 @@ $selectedStatus = $_POST['status'] ?? 'Active';
 
                     <div class="col-md-6">
                         <label for="shift" class="form-label">Shift</label>
-                        <select class="form-select" id="shift" name="shift" required>
+                        <select
+                            class="form-select"
+                            id="shift"
+                            name="shift"
+                            required
+                        >
                             <?php foreach (['Morning', 'Afternoon', 'Night', 'Rotating'] as $option): ?>
                                 <option
                                     value="<?= e($option) ?>"
@@ -524,8 +522,15 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                     </div>
 
                     <div class="col-md-6">
-                        <label for="status" class="form-label">Employment Status</label>
-                        <select class="form-select" id="status" name="status" required>
+                        <label for="status" class="form-label">
+                            Employment Status
+                        </label>
+                        <select
+                            class="form-select"
+                            id="status"
+                            name="status"
+                            required
+                        >
                             <?php foreach (['Active', 'On Leave', 'Inactive'] as $option): ?>
                                 <option
                                     value="<?= e($option) ?>"
@@ -533,15 +538,19 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                                 ><?= e($option) ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <small class="text-muted">Only Active caretakers can log in.</small>
+                        <small class="text-muted">
+                            Only Active caretakers should be allowed to log in.
+                        </small>
                     </div>
                 </div>
 
-                <h5 class="section-title">Login Credentials</h5>
+                <h2 class="section-title">Login Credentials</h2>
 
                 <div class="row g-3">
                     <div class="col-md-4">
-                        <label for="username" class="form-label">Username *</label>
+                        <label for="username" class="form-label">
+                            Username *
+                        </label>
                         <input
                             type="text"
                             class="form-control"
@@ -554,7 +563,9 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                     </div>
 
                     <div class="col-md-4">
-                        <label for="password" class="form-label">Password *</label>
+                        <label for="password" class="form-label">
+                            Password *
+                        </label>
                         <div class="input-group password-group">
                             <input
                                 type="password"
@@ -569,13 +580,16 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                                 class="btn btn-outline-secondary"
                                 type="button"
                                 onclick="togglePassword('password', this)"
+                                aria-label="Show or hide password"
                             >Show</button>
                         </div>
                         <small class="text-muted">At least 8 characters.</small>
                     </div>
 
                     <div class="col-md-4">
-                        <label for="confirm_password" class="form-label">Confirm Password *</label>
+                        <label for="confirm_password" class="form-label">
+                            Confirm Password *
+                        </label>
                         <div class="input-group password-group">
                             <input
                                 type="password"
@@ -590,22 +604,23 @@ $selectedStatus = $_POST['status'] ?? 'Active';
                                 class="btn btn-outline-secondary"
                                 type="button"
                                 onclick="togglePassword('confirm_password', this)"
+                                aria-label="Show or hide confirmation password"
                             >Show</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="form-actions d-flex flex-wrap justify-content-end gap-2 mt-4">
-                    <a href="caretakers_staff.php" class="action-btn btn-cancel">
-                        Cancel
-                    </a>
-
+                <div class="form-actions">
                     <button type="submit" class="action-btn btn-save">
                         Save Caretaker
                     </button>
-                </div>
 
+                    <a href="caretakers_staff.php" class="action-btn btn-cancel">
+                        Cancel
+                    </a>
+                </div>
             </form>
+
         </div>
     </section>
 </main>
