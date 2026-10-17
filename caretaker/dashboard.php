@@ -202,7 +202,10 @@ try {
             <p class="text-muted mb-0">Care, comfort, and dignity.</p>
         </div>
 
-        <a href="../auth/logout.php" class="logout">Logout</a>
+        <a href="../auth/logout.php" class="logout">
+    <span aria-hidden="true"></span>
+    Logout
+</a>
     </div>
 
     <section class="welcome-card mb-4">
