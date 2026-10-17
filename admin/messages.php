@@ -1,8 +1,9 @@
+
 <?php
 session_start();
 
 if (
-    !isset($_SESSION['user_id'],$_SESSION['role']) ||
+    !isset($_SESSION['user_id'], $_SESSION['role']) ||
     !in_array($_SESSION['role'], ['admin', 'staff'], true)
 ) {
     header('Location: ../index.php');
@@ -11,91 +12,162 @@ if (
 
 require_once __DIR__ . '/../config/db.php';
 
-function e($value): string {
+function e($value): string
+{
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$view =$_GET['view'] ?? 'inbox';
-$tab =$_GET['tab'] ?? 'admin_staff';
-if (!in_array($tab, ['admin_staff', 'caretakers', 'unread'], true)) {$tab = 'admin_staff';
+if (empty($_SESSION['messages_csrf'])) {
+    $_SESSION['messages_csrf'] = bin2hex(random_bytes(32));
 }
 
-$errors = [];$successMessage = '';
+$tab = $_GET['tab'] ?? 'admin_staff';
 
-// Handle Delete Action
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $deleteId = (int)$_GET['id'];
-    try {
-        // Soft delete message by updating status
-        $stmtDelete =$pdo->prepare("UPDATE messages SET status = 'deleted' WHERE id = ? AND recipient_id = ?");
-        $stmtDelete->execute([$deleteId,$_SESSION['user_id']]);
-        
-        header("Location: messages.php?tab=" . urlencode($tab) . "&msg=deleted");
-        exit;
-    } catch (PDOException $e) {
-        $errors[] = 'Failed to delete message: ' .$e->getMessage();
-    }
+if (!in_array($tab, ['admin_staff', 'caretakers', 'unread'], true)) {
+    $tab = 'admin_staff';
 }
 
-if (isset($_GET['msg'])) {
-    if ($_GET['msg'] === 'sent') {$successMessage = 'Message successfully sent!';
-    } elseif ($_GET['msg'] === 'deleted') {$successMessage = 'Message deleted successfully.';
-    }
-}
-
+$errors = [];
+$successMessage = '';
 $search = trim($_GET['search'] ?? '');
 
-// Fetch Messages
-$messages = [];
-if ($view === 'inbox') {
-    try {
-        $viewRoles = match($tab) {
-            'caretakers'  => ["'caretaker'"],
-            'unread'      => ["'admin'", "'staff'", "'caretaker'"],
-            'admin_staff' => ["'admin'", "'staff'"],
-            default       => ["'admin'", "'staff'"]
-        };
-        $roleFilterSql = implode(",", $viewRoles);
+/* Archive a message using POST. */
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    ($_POST['action'] ?? '') === 'archive'
+) {
+    $token = $_POST['csrf_token'] ?? '';
+    $messageId = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
 
-        $sql = "SELECT m.id, u.full_name AS sender_name, u.role AS sender_role, m.subject, m.preview, m.date_recorded AS `date`, m.status
-                FROM messages AS m
-                JOIN users AS u ON m.sender_id = u.id
-                WHERE m.recipient_id = ? AND m.status != 'deleted' AND u.role IN ({$roleFilterSql})";
-        $params = [$_SESSION['user_id']];
+    if (
+        !is_string($token) ||
+        !hash_equals($_SESSION['messages_csrf'], $token)
+    ) {
+        $errors[] = 'Security check failed. Refresh the page and try again.';
+    } elseif (!$messageId || $messageId < 1) {
+        $errors[] = 'Invalid message ID.';
+    } else {
+        try {
+            /*
+             * The existing messages table uses status = 'deleted'
+             * as its archive marker.
+             *
+             * Only the recipient can archive their own inbox copy.
+             */
+            $stmt = $pdo->prepare(
+                "UPDATE messages
+                 SET status = 'deleted'
+                 WHERE id = :id
+                   AND recipient_id = :recipient_id
+                   AND status <> 'deleted'"
+            );
 
-        if ($tab === 'unread') {$sql .= " AND m.status = 'unread'";
+            $stmt->execute([
+                'id' => $messageId,
+                'recipient_id' => $_SESSION['user_id']
+            ]);
+
+            if ($stmt->rowCount() > 0) {
+                header(
+                    'Location: messages.php?tab=' .
+                    urlencode($tab) .
+                    '&msg=archived'
+                );
+                exit;
+            }
+
+            $errors[] = 'Message not found or it has already been archived.';
+        } catch (PDOException $ex) {
+            error_log('Message archive error: ' . $ex->getMessage());
+            $errors[] = 'Unable to archive the message. Please check the messages table.';
         }
-        if ($search !== '') {$sql .= " AND (m.subject LIKE ? OR u.full_name LIKE ?)";
-            $params[] = "\%$search%";
-            $params[] = "\%$search%";
-        }
-        $sql .= " ORDER BY m.id DESC";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $messages =$stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {$messages = [];
     }
+}
+
+/* Display feedback after redirect. */
+if (isset($_GET['msg'])) {
+    if ($_GET['msg'] === 'sent') {
+        $successMessage = 'Message successfully sent!';
+    } elseif ($_GET['msg'] === 'archived') {
+        $successMessage = 'Message moved to Archive & Restore, if supported there.';
+    }
+}
+
+/* Fetch messages for the selected inbox tab. */
+$messages = [];
+
+try {
+    $roleFilters = [
+        'admin_staff' => ['admin', 'staff'],
+        'caretakers'  => ['caretaker'],
+        'unread'      => ['admin', 'staff', 'caretaker']
+    ];
+
+    $allowedRoles = $roleFilters[$tab];
+    $placeholders = implode(',', array_fill(0, count($allowedRoles), '?'));
+
+    $sql = "
+        SELECT
+            m.id,
+            u.full_name AS sender_name,
+            u.role AS sender_role,
+            m.subject,
+            m.preview,
+            m.date_recorded AS message_date,
+            m.status
+        FROM messages AS m
+        INNER JOIN users AS u ON m.sender_id = u.id
+        WHERE m.recipient_id = ?
+          AND m.status <> 'deleted'
+          AND u.role IN ($placeholders)
+    ";
+
+    $params = array_merge(
+        [$_SESSION['user_id']],
+        $allowedRoles
+    );
+
+    if ($tab === 'unread') {
+        $sql .= " AND m.status = ?";
+        $params[] = 'unread';
+    }
+
+    if ($search !== '') {
+        $sql .= " AND (m.subject LIKE ? OR u.full_name LIKE ?)";
+        $wildcardSearch = '%' . $search . '%';
+        $params[] = $wildcardSearch;
+        $params[] = $wildcardSearch;
+    }
+
+    $sql .= ' ORDER BY m.id DESC';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $ex) {
+    error_log('Message list error: ' . $ex->getMessage());
+    $errors[] = 'Could not load messages. Check your messages and users database tables.';
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Messages | Home for the Aged</title>
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          rel="stylesheet">
+
     <style>
         :root {
-            --sidebar-bg: #0d3b1e;
             --green: #17683a;
             --pale-green: #edf7ef;
             --text: #304b3b;
         }
 
         body {
-            background-color: #f8fbf8;
+            background: #f8fbf8;
             color: var(--text);
             font-family: Arial, sans-serif;
             overflow-x: hidden;
@@ -109,212 +181,244 @@ if ($view === 'inbox') {
         .card {
             border: none;
             border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            background: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .05);
+            background: #fff;
         }
 
         .form-label {
             font-weight: 600;
             color: var(--green);
-            font-size: 0.9rem;
+            font-size: .9rem;
         }
 
-        .form-control, .form-select {
+        .form-control,
+        .form-select {
             border-radius: 6px;
             border: 1px solid #dcdcdc;
             padding: 10px 14px;
         }
 
         .btn-success {
-            background-color: var(--green);
+            background: var(--green);
             border-color: var(--green);
-            color: #ffffff;
+            color: #fff;
             font-weight: 600;
             border-radius: 6px;
         }
 
         .btn-success:hover {
-            background-color: #0f4b2a;
+            background: #0f4b2a;
             border-color: #0f4b2a;
         }
 
         .table thead th {
-            background-color: var(--pale-green);
+            background: var(--pale-green);
             color: var(--text);
             font-weight: 600;
             border-bottom: 1px solid #e0eee3;
             padding: 12px 16px;
+            white-space: nowrap;
         }
 
         .table tbody td {
             padding: 14px 16px;
+            vertical-align: middle;
         }
 
-        /* Action Buttons Styling */
-        .btn-action-view {
-            color: #0d6efd;
-            border-color: #0d6efd;
-            border-radius: 4px;
-            padding: 2px 10px;
-            font-size: 0.85rem;
-            text-decoration: none;
-        }
-
-        .btn-action-view:hover {
-            background-color: #0d6efd;
-            color: #fff;
-        }
-
-        .btn-action-delete {
-            color: #dc3545;
-            border-color: #dc3545;
-            border-radius: 4px;
-            padding: 2px 10px;
-            font-size: 0.85rem;
-            text-decoration: none;
-        }
-
-        .btn-action-delete:hover {
-            background-color: #dc3545;
-            color: #fff;
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 18px 12px;
+            }
         }
     </style>
 </head>
 <body>
 
-    <!-- Include Sidebar Navigation -->
-    <?php include '../includes/sidebar.php'; ?>
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
-    <div class="main-content">
-        
-        <?php if (!empty($successMessage)): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <?= e($successMessage) ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
+<div class="main-content">
 
-        <?php if (!empty($errors)): ?>
-            <div class="alert alert-danger">
-                <ul class="mb-0">
-                    <?php foreach ($errors as$error): ?>
-                        <li><?= e($error) ?></li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
-        <?php endif; ?>
+    <?php if ($successMessage !== ''): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <?= e($successMessage) ?>
+            <button type="button" class="btn-close"
+                    data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
 
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-                <h2 class="fw-bold mb-1">Messages - Inbox</h2>
-                <p class="text-muted mb-0">View and manage internal communication and system alerts.</p>
-            </div>
-            <div>
-                <a href="dashboard.php" class="btn btn-outline-success me-2">&larr; Back to Dashboard</a>
-                <a href="new_message.php" class="btn btn-success">+ New Message</a>
-            </div>
+    <?php if ($errors): ?>
+        <div class="alert alert-danger">
+            <ul class="mb-0">
+                <?php foreach ($errors as $error): ?>
+                    <li><?= e($error) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+        <div>
+            <h2 class="fw-bold mb-1">Messages - Inbox</h2>
+            <p class="text-muted mb-0">
+                View and manage internal communication and system alerts.
+            </p>
         </div>
 
-        <!-- Role Tabs -->
-        <div class="mb-4">
-            <div class="btn-group" role="group">
-                <a href="messages.php?tab=admin_staff" class="btn btn-outline-success <?= $tab === 'admin_staff' ? 'active' : '' ?>">
-                    Admin & Staff
-                </a>
-                <a href="messages.php?tab=caretakers" class="btn btn-outline-success <?= $tab === 'caretakers' ? 'active' : '' ?>">
-                    Caretakers
-                </a>
-                <a href="messages.php?tab=unread" class="btn btn-outline-success <?= $tab === 'unread' ? 'active' : '' ?>">
-                    Unread
-                </a>
-            </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="dashboard.php" class="btn btn-outline-success">
+                &larr; Back to Dashboard
+            </a>
+            <a href="new_message.php" class="btn btn-success">
+                + New Message
+            </a>
         </div>
-
-        <!-- Search Card -->
-        <div class="card p-3 mb-4">
-            <form method="GET" class="row g-3 align-items-end">
-                <input type="hidden" name="tab" value="<?= e($tab) ?>">
-                <div class="col-md-9">
-                    <label class="form-label small mb-1">Search by subject or recipient/sender</label>
-                    <input type="text" name="search" class="form-control" value="<?= e($search) ?>" placeholder="Enter keyword...">
-                </div>
-                <div class="col-md-3 d-flex gap-2">
-                    <button type="submit" class="btn btn-success flex-fill">Search</button>
-                    <a href="messages.php?tab=<?= e($tab) ?>" class="btn btn-outline-secondary">Reset</a>
-                </div>
-            </form>
-        </div>
-
-        <!-- Message List Card -->
-        <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="fw-bold mb-0">
-                    <?= $tab === 'admin_staff' ? 'Admin & Staff Messages' : ($tab === 'caretakers' ? 'Caretakers Messages' : 'Unread Messages') ?>
-                </h5>
-                <span class="text-muted small">Total: <?= count($messages) ?></span>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table align-middle mb-0 table-hover">
-                    <thead>
-                        <tr>
-                            <th style="width: 20%;">Sender</th>
-                            <th style="width: 25%;">Subject</th>
-                            <th style="width: 30%;">Preview</th>
-                            <th style="width: 12%;">Date</th>
-                            <th style="width: 13%; text-align: center;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($messages)): ?>
-                           <tr>
-                               <td colspan="5" class="text-center text-muted py-4">No messages found.</td>
-                           </tr>
-                        <?php else: ?>
-                            <?php foreach ($messages as$row): ?>
-                                <tr class="<?= $row['status'] === 'unread' ? 'fw-bold' : '' ?>">
-                                    <!-- Sender & Role -->
-                                    <td>
-                                        <div><?= e($row['sender_name']) ?></div>
-                                        <small class="text-muted" style="font-size: 0.75rem;">
-                                            (<?= ucfirst(e($row['sender_role'])) ?>)
-                                        </small>
-                                    </td>
-
-                                    <!-- Subject -->
-                                    <td><?= e($row['subject']) ?></td>
-
-                                    <!-- Preview -->
-                                    <td class="text-muted small text-truncate" style="max-width: 250px;">
-                                        <?= e($row['preview']) ?>
-                                    </td>
-
-                                    <!-- Date -->
-                                    <td class="small text-muted">
-                                        <?= e(date('M d, Y', strtotime($row['date']))) ?>
-                                    </td>
-
-                                    <!-- Actions Column: View & Delete Buttons -->
-                                    <td class="text-center">
-                                        <div class="d-inline-flex gap-1">
-                                            <a href="view_message.php?id=<?= e($row['id']) ?>" 
-                                               class="btn btn-sm btn-outline-primary btn-action-view">View</a>
-                                            <a href="messages.php?tab=<?= e($tab) ?>&action=delete&id=<?= e($row['id']) ?>" 
-                                               class="btn btn-sm btn-outline-danger btn-action-delete" 
-                                               onclick="return confirm('Are you sure you want to delete this message?');">Delete</a>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
     </div>
 
-    <!-- Bootstrap 5 JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="mb-4">
+        <div class="btn-group flex-wrap" role="group" aria-label="Message tabs">
+            <a href="messages.php?tab=admin_staff"
+               class="btn btn-outline-success <?= $tab === 'admin_staff' ? 'active' : '' ?>">
+                Admin &amp; Staff
+            </a>
+
+            <a href="messages.php?tab=caretakers"
+               class="btn btn-outline-success <?= $tab === 'caretakers' ? 'active' : '' ?>">
+                Caretakers
+            </a>
+
+            <a href="messages.php?tab=unread"
+               class="btn btn-outline-success <?= $tab === 'unread' ? 'active' : '' ?>">
+                Unread
+            </a>
+        </div>
+    </div>
+
+    <div class="card p-3 mb-4">
+        <form method="GET" class="row g-3 align-items-end">
+            <input type="hidden" name="tab" value="<?= e($tab) ?>">
+
+            <div class="col-md-9">
+                <label for="search" class="form-label mb-1">
+                    Search by subject or sender
+                </label>
+                <input
+                    id="search"
+                    type="search"
+                    name="search"
+                    class="form-control"
+                    value="<?= e($search) ?>"
+                    placeholder="Enter keyword..."
+                >
+            </div>
+
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-success flex-fill">
+                    Search
+                </button>
+                <a href="messages.php?tab=<?= e($tab) ?>"
+                   class="btn btn-outline-secondary">
+                    Reset
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h5 class="fw-bold mb-0">
+                <?php
+                echo match ($tab) {
+                    'caretakers' => 'Caretaker Messages',
+                    'unread' => 'Unread Messages',
+                    default => 'Admin & Staff Messages'
+                };
+                ?>
+            </h5>
+
+            <span class="text-muted small">
+                Total: <?= count($messages) ?>
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table align-middle mb-0 table-hover">
+                <thead>
+                    <tr>
+                        <th>Sender</th>
+                        <th>Subject</th>
+                        <th>Preview</th>
+                        <th>Date</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                <?php if (!$messages): ?>
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            No messages found.
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($messages as $row): ?>
+                        <tr class="<?= ($row['status'] ?? '') === 'unread' ? 'fw-bold' : '' ?>">
+                            <td>
+                                <div><?= e($row['sender_name']) ?></div>
+                                <small class="text-muted">
+                                    <?= e(ucfirst((string)$row['sender_role'])) ?>
+                                </small>
+                            </td>
+
+                            <td><?= e($row['subject']) ?></td>
+
+                            <td class="text-muted small"
+                                style="max-width: 250px; overflow-wrap: anywhere;">
+                                <?= e($row['preview']) ?>
+                            </td>
+
+                            <td class="small text-muted">
+                                <?php
+                                $dateValue = $row['message_date'] ?? '';
+                                $timestamp = $dateValue !== '' ? strtotime($dateValue) : false;
+                                echo $timestamp !== false ? e(date('M d, Y', $timestamp)) : '—';
+                                ?>
+                            </td>
+
+                            <td class="text-center">
+                                <div class="d-inline-flex gap-1 flex-wrap">
+                                    <a
+                                        href="view_message.php?id=<?= (int)$row['id'] ?>"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >
+                                        View
+                                    </a>
+
+                                    <form
+                                        method="POST"
+                                        class="d-inline"
+                                        onsubmit="return confirm('Move this message to Archive & Restore?');"
+                                    >
+                                        <input type="hidden" name="csrf_token"
+                                               value="<?= e($_SESSION['messages_csrf']) ?>">
+                                        <input type="hidden" name="action" value="archive">
+                                        <input type="hidden" name="id"
+                                               value="<?= (int)$row['id'] ?>">
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-danger">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

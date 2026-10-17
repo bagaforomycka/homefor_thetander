@@ -1,9 +1,10 @@
+
 <?php
 session_start();
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    !in_array($_SESSION['role'], ['admin', 'staff'], true)
+    $_SESSION['role'] !== 'admin'
 ) {
     header('Location: ../index.php');
     exit;
@@ -11,73 +12,90 @@ if (
 
 require_once __DIR__ . '/../config/db.php';
 
-function e($value): string {
+function e($value): string
+{
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-// Determine active tab from URL (?tab=staff or ?tab=caretakers)
-$tab = $_GET['tab'] ?? 'caretakers';
-if (!in_array($tab, ['caretakers', 'staff'], true)) {
-    $tab = 'caretakers';
+if (empty($_SESSION['caretakers_csrf'])) {
+    $_SESSION['caretakers_csrf'] = bin2hex(random_bytes(32));
 }
 
 $search = trim($_GET['search'] ?? '');
 $status = trim($_GET['status'] ?? '');
+$errorMsg = '';
 
-// Handle Delete Action
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $deleteId = $_GET['id'];
-    $targetTable = ($tab === 'staff') ? 'staff' : 'caretakers';
-    try {
-        $delStmt = $pdo->prepare("DELETE FROM {$targetTable} WHERE id = ?");
-        $delStmt->execute([$deleteId]);
-        header("Location: caretakers_staff.php?tab={$tab}&msg=deleted");
-        exit;
-    } catch (PDOException $e) {
-        $errorMsg = "Could not delete record.";
+/* Archive caretaker using POST, not a GET delete link. */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archive') {
+    $token = $_POST['csrf_token'] ?? '';
+    $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+
+    if (!is_string($token) || !hash_equals($_SESSION['caretakers_csrf'], $token)) {
+        $errorMsg = 'Security check failed. Please refresh the page and try again.';
+    } elseif (!$id || $id < 1) {
+        $errorMsg = 'Invalid caretaker record.';
+    } else {
+        try {
+            $stmt = $pdo->prepare(
+                'UPDATE caretakers
+                 SET archived_at = NOW()
+                 WHERE id = :id
+                   AND archived_at IS NULL'
+            );
+            $stmt->execute(['id' => $id]);
+
+            if ($stmt->rowCount() > 0) {
+                header('Location: caretakers_staff.php?msg=archived');
+                exit;
+            }
+
+            $errorMsg = 'Caretaker not found or already archived.';
+        } catch (PDOException $e) {
+            error_log('Caretaker archive error: ' . $e->getMessage());
+            $errorMsg = 'Could not archive this caretaker. Check the database table and archived_at column.';
+        }
     }
 }
 
+/* Show active caretakers only. */
 $records = [];
-try {
-    if ($tab === 'staff') {
-        $sql = "SELECT * FROM staff WHERE 1=1";
-    } else {
-        $sql = "SELECT * FROM caretakers WHERE 1=1";
-    }
 
+try {
+    $sql = 'SELECT *
+            FROM caretakers
+            WHERE archived_at IS NULL';
     $params = [];
 
     if ($search !== '') {
-        $sql .= " AND (employee_id LIKE ? OR full_name LIKE ?)";
-        $params[] = "%$search%";
-        $params[] = "%$search%";
+        $sql .= ' AND (employee_id LIKE :search_id OR full_name LIKE :search_name)';
+        $params['search_id'] = '%' . $search . '%';
+        $params['search_name'] = '%' . $search . '%';
     }
+
     if ($status !== '') {
-        $sql .= " AND status = ?";
-        $params[] = $status;
+        $sql .= ' AND status = :status';
+        $params['status'] = $status;
     }
-    $sql .= " ORDER BY id DESC";
+
+    $sql .= ' ORDER BY id DESC';
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 } catch (PDOException $e) {
-    $records = [];
+    error_log('Caretaker list error: ' . $e->getMessage());
+    $errorMsg = 'Could not load caretakers. Check that the caretakers table has an archived_at column.';
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $tab === 'staff' ? 'Staff' : 'Caretaker' ?> Management | Home for the Aged</title>
-    <!-- Bootstrap 5 CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Caretaker Management | Home for the Aged</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
-            --sidebar-bg: #0d3b1e;
             --green: #17683a;
             --light-green: #33b960;
             --pale-green: #edf7ef;
@@ -85,7 +103,7 @@ try {
         }
 
         body {
-            background-color: #f8fbf8;
+            background: #f8fbf8;
             color: var(--text);
             font-family: Arial, sans-serif;
             overflow-x: hidden;
@@ -94,177 +112,175 @@ try {
         .main-content {
             margin-left: 10px;
             padding: 24px 32px 32px 24px;
-            width: auto;
         }
 
         .card {
             border: none;
             border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-            width: 100%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
         }
 
         .btn-success {
-            background-color: #17683a;
-            border-color: #17683a;
-            color: #ffffff;
+            background: var(--green);
+            border-color: var(--green);
         }
 
         .btn-success:hover {
-            background-color: #0f4b2a;
+            background: #0f4b2a;
             border-color: #0f4b2a;
-            color: #ffffff;
-        }
-
-        .btn-outline-success {
-            color: #17683a;
-            border-color: #17683a;
-            background-color: transparent;
-        }
-
-        .btn-outline-success:hover, .btn-check:checked + .btn-outline-success {
-            background-color: #17683a;
-            border-color: #17683a;
-            color: #ffffff;
         }
 
         .table thead th {
-            background-color: #edf7ef;
-            color: #304b3b;
-            font-weight: 600;
-            border-bottom: 1px solid #e0eee3;
-            padding: 12px 16px;
+            background: var(--pale-green);
+            color: var(--text);
+            white-space: nowrap;
         }
 
-        .table tbody td {
-            padding: 14px 16px;
+        .table th, .table td {
+            padding: 12px 14px;
+            vertical-align: middle;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 18px 12px;
+            }
         }
     </style>
 </head>
 <body>
 
-    <!-- Include Sidebar -->
-    <?php include '../includes/sidebar.php'; ?>
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
-    <!-- Main Content Area -->
-    <div class="main-content">
-        
-        <!-- Header Controls -->
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div>
-                <h2 class="fw-bold mb-1"><?= $tab === 'staff' ? 'Staff Management' : 'Caretaker Management' ?></h2>
-                <p class="text-muted mb-0">
-                    <?= $tab === 'staff' ? 'View and manage administrative and support staff profiles.' : 'View and manage caretaker details, assignments, and schedules.' ?>
-                </p>
-            </div>
-            <div>
-                <a href="dashboard.php" class="btn btn-outline-success me-2">&larr; Back to Dashboard</a>
-                <a href="<?= $tab === 'staff' ? 'add_staff.php' : 'add_caretaker.php' ?>" class="btn btn-success">
-                    <?= $tab === 'staff' ? '+ Add Staff' : '+ Add Caretaker' ?>
-                </a>
-            </div>
+<div class="main-content">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h2 class="fw-bold mb-1">Caretaker Management</h2>
+            <p class="text-muted mb-0">View and manage caretaker profiles and status.</p>
         </div>
-
-        <?php if (isset($_GET['msg']) && $_GET['msg'] === 'deleted'): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                Record successfully deleted.
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
-
-        <!-- Mode Toggle Switch (Caretakers vs Staff) -->
-        <div class="toggle-tabs mb-4">
-            <div class="btn-group" role="group">
-                <a href="caretakers_staff.php?tab=caretakers" class="btn btn-outline-success <?= $tab === 'caretakers' ? 'active' : '' ?>">Caretakers</a>
-                <a href="caretakers_staff.php?tab=staff" class="btn btn-outline-success <?= $tab === 'staff' ? 'active' : '' ?>">Staff</a>
-            </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="dashboard.php" class="btn btn-outline-success">← Back to Dashboard</a>
+            <a href="add_caretaker.php" class="btn btn-success">+ Add Caretaker</a>
         </div>
-
-        <!-- Filter Card -->
-        <div class="card p-3 mb-4">
-            <form method="GET" class="row g-3 align-items-end">
-                <input type="hidden" name="tab" value="<?= e($tab) ?>">
-                <div class="col-md-5">
-                    <label class="form-label text-muted small mb-1">Search by <?= $tab === 'staff' ? 'staff' : 'caretaker' ?> ID or name</label>
-                    <input type="text" name="search" class="form-control" value="<?= e($search) ?>" placeholder="Enter ID or name">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label text-muted small mb-1">Filter by status</label>
-                    <select name="status" class="form-select">
-                        <option value="">All statuses</option>
-                        <option value="Active" <?= $status === 'Active' ? 'selected' : '' ?>>Active</option>
-                        <option value="On Leave" <?= $status === 'On Leave' ? 'selected' : '' ?>>On Leave</option>
-                        <option value="Inactive" <?= $status === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
-                    </select>
-                </div>
-                <div class="col-md-3 d-flex gap-2">
-                    <button type="submit" class="btn btn-success flex-fill">Search</button>
-                    <a href="caretakers_staff.php?tab=<?= e($tab) ?>" class="btn btn-outline-secondary">Reset</a>
-                </div>
-            </form>
-        </div>
-
-        <!-- Table Card -->
-        <div class="card p-3">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="fw-bold mb-0"><?= $tab === 'staff' ? 'Staff List' : 'Caretaker List' ?></h5>
-                <span class="text-muted small">Total: <?= count($records) ?></span>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>Employee ID</th>
-                            <th>Full Name</th>
-                            <th>Contact</th>
-                            <th>Position</th>
-                            <th>Shift</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($records)): ?>
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    No <?= e($tab) ?> found.
-                                </td>
-                            </tr>
-                        <?php else: ?>
-                            <?php foreach ($records as $row): ?>
-                                <tr>
-                                    <td><?= e($row['employee_id']) ?></td>
-                                    <td><?= e($row['full_name']) ?></td>
-                                    <td><?= e($row['contact']) ?></td>
-                                    <td><?= e($row['position'] ?? 'N/A') ?></td>
-                                    <td><?= e($row['shift']) ?></td>
-                                    <td>
-                                        <span class="badge bg-<?= $row['status'] === 'Active' ? 'success' : ($row['status'] === 'On Leave' ? 'warning' : 'secondary') ?>">
-                                            <?= e($row['status']) ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="d-flex gap-1">
-                                            <a href="view_profile_cs.php?tab=<?= e($tab) ?>&id=<?= e($row['id']) ?>" class="btn btn-sm btn-outline-info" title="View">View</a>
-                                            <a href="edit_profile_cs.php?tab=<?= e($tab) ?>&id=<?= e($row['id']) ?>" class="btn btn-sm btn-outline-primary" title="Edit">Edit</a>
-                                            <a href="caretakers_staff.php?tab=<?= e($tab) ?>&action=delete&id=<?= e($row['id']) ?>" 
-                                               class="btn btn-sm btn-outline-danger" 
-                                               title="Delete" 
-                                               onclick="return confirm('Are you sure you want to delete this record?');">Delete</a>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
     </div>
 
-    <!-- Bootstrap 5 JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <?php if (($_GET['msg'] ?? '') === 'archived'): ?>
+        <div class="alert alert-success">
+            Caretaker archived successfully. You can restore the record from Archive &amp; Restore.
+        </div>
+    <?php endif; ?>
+
+    <?php if ($errorMsg !== ''): ?>
+        <div class="alert alert-danger"><?= e($errorMsg) ?></div>
+    <?php endif; ?>
+
+    <div class="card p-3 mb-4">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label for="search" class="form-label">Search by employee ID or name</label>
+                <input
+                    id="search"
+                    type="search"
+                    name="search"
+                    class="form-control"
+                    value="<?= e($search) ?>"
+                    placeholder="Enter ID or name"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label for="status" class="form-label">Filter by status</label>
+                <select id="status" name="status" class="form-select">
+                    <option value="">All statuses</option>
+                    <option value="Active" <?= $status === 'Active' ? 'selected' : '' ?>>Active</option>
+                    <option value="On Leave" <?= $status === 'On Leave' ? 'selected' : '' ?>>On Leave</option>
+                    <option value="Inactive" <?= $status === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
+                </select>
+            </div>
+
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-success flex-fill">Search</button>
+                <a href="caretakers_staff.php" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h5 class="fw-bold mb-0">Caretaker List</h5>
+            <span class="text-muted small">Total: <?= count($records) ?></span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Employee ID</th>
+                        <th>Full Name</th>
+                        <th>Contact</th>
+                        <th>Position</th>
+                        <th>Shift</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (!$records): ?>
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            No active caretakers found.
+                        </td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($records as $row): ?>
+                        <tr>
+                            <td><?= e($row['employee_id'] ?? '') ?></td>
+                            <td><?= e($row['full_name'] ?? '') ?></td>
+                            <td><?= e($row['contact'] ?? '') ?></td>
+                            <td><?= e($row['position'] ?? 'N/A') ?></td>
+                            <td><?= e($row['shift'] ?? '') ?></td>
+                            <td>
+                                <?php
+                                $badge = ($row['status'] ?? '') === 'Active'
+                                    ? 'success'
+                                    : ((($row['status'] ?? '') === 'On Leave') ? 'warning text-dark' : 'secondary');
+                                ?>
+                                <span class="badge bg-<?= e($badge) ?>">
+                                    <?= e($row['status'] ?? '') ?>
+                                </span>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    <a
+                                        href="view_profile_cs.php?tab=caretakers&amp;id=<?= (int)$row['id'] ?>"
+                                        class="btn btn-sm btn-outline-info"
+                                    >View</a>
+
+                                    <a
+                                        href="edit_profile_cs.php?tab=caretakers&amp;id=<?= (int)$row['id'] ?>"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >Edit</a>
+
+                                    <form method="POST" class="d-inline"
+                                          onsubmit="return confirm('Archive this caretaker? The record will be moved to Archive & Restore and will no longer appear in this list.');">
+                                        <input type="hidden" name="csrf_token" value="<?= e($_SESSION['caretakers_csrf']) ?>">
+                                        <input type="hidden" name="action" value="archive">
+                                        <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

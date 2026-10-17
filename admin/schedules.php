@@ -1,3 +1,4 @@
+
 <?php
 session_start();
 
@@ -21,35 +22,68 @@ $statusFilter = $_GET['status'] ?? 'all';
 $success = $_GET['success'] ?? '';
 $error = '';
 
-/* Delete schedule: administrators only */
+$isAdmin = $_SESSION['role'] === 'admin';
+
+$allowedStatuses = ['Scheduled', 'Completed', 'Cancelled'];
+
+/* Create a CSRF token for schedule actions. */
+if (empty($_SESSION['schedules_csrf_token'])) {
+    $_SESSION['schedules_csrf_token'] = bin2hex(random_bytes(32));
+}
+
+$csrfToken = $_SESSION['schedules_csrf_token'];
+
+/* Delete means archive. It does not permanently delete the schedule. */
 if (
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
     ($_POST['action'] ?? '') === 'delete'
 ) {
-    if ($_SESSION['role'] !== 'admin') {
+    if (!$isAdmin) {
         http_response_code(403);
-        exit('Only an administrator can delete schedules.');
+        exit('Only an administrator can archive schedules.');
+    }
+
+    $postedToken = $_POST['csrf_token'] ?? '';
+
+    if (
+        !is_string($postedToken) ||
+        !hash_equals($csrfToken, $postedToken)
+    ) {
+        http_response_code(403);
+        exit('Invalid security token. Please return to Schedules and try again.');
     }
 
     $deleteId = filter_input(INPUT_POST, 'schedule_id', FILTER_VALIDATE_INT);
 
-    if ($deleteId) {
-        try {
-            $stmt = $pdo->prepare('DELETE FROM schedules WHERE id = :id');
-            $stmt->execute(['id' => $deleteId]);
+    if (!$deleteId || $deleteId < 1) {
+        header('Location: schedules.php?success=invalid');
+        exit;
+    }
 
-            header('Location: schedules.php?success=deleted');
+    try {
+        $stmt = $pdo->prepare(
+            'UPDATE schedules
+             SET archived_at = NOW()
+             WHERE id = :id
+               AND archived_at IS NULL'
+        );
+
+        $stmt->execute(['id' => $deleteId]);
+
+        if ($stmt->rowCount() > 0) {
+            header('Location: schedules.php?success=archived');
             exit;
-        } catch (PDOException $e) {
-            error_log('Schedule deletion error: ' . $e->getMessage());
-            $error = 'Unable to delete this schedule.';
         }
-    } else {
-        $error = 'Invalid schedule selected.';
+
+        header('Location: schedules.php?success=notfound');
+        exit;
+    } catch (PDOException $e) {
+        error_log('Schedule archive error: ' . $e->getMessage());
+        $error = 'Unable to archive this schedule. Please check the database and try again.';
     }
 }
 
-/* Retrieve schedules and optional resident names */
+/* Retrieve active schedules and their optional resident names. */
 $sql = "
     SELECT
         s.*,
@@ -59,7 +93,7 @@ $sql = "
         r.last_name
     FROM schedules s
     LEFT JOIN residents r ON r.id = s.resident_id
-    WHERE 1 = 1
+    WHERE s.archived_at IS NULL
 ";
 
 $params = [];
@@ -86,8 +120,6 @@ if ($search !== '') {
     ];
 }
 
-$allowedStatuses = ['Scheduled', 'Completed', 'Cancelled'];
-
 if (in_array($statusFilter, $allowedStatuses, true)) {
     $sql .= ' AND s.status = :status';
     $params['status'] = $statusFilter;
@@ -95,9 +127,15 @@ if (in_array($statusFilter, $allowedStatuses, true)) {
 
 $sql .= ' ORDER BY s.schedule_date DESC, s.start_time DESC, s.id DESC';
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$schedules = $stmt->fetchAll();
+try {
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log('Schedule retrieval error: ' . $e->getMessage());
+    $schedules = [];
+    $error = 'Unable to load schedules. Please check the schedules and residents table structure.';
+}
 
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
@@ -262,8 +300,16 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="alert alert-success">Schedule added successfully.</div>
 <?php elseif ($success === 'updated'): ?>
     <div class="alert alert-success">Schedule updated successfully.</div>
-<?php elseif ($success === 'deleted'): ?>
-    <div class="alert alert-success">Schedule deleted successfully.</div>
+<?php elseif ($success === 'archived'): ?>
+    <div class="alert alert-success">
+        Schedule archived successfully. You can restore it from Archive &amp; Restore in the sidebar.
+    </div>
+<?php elseif ($success === 'notfound'): ?>
+    <div class="alert alert-warning">
+        This schedule was not found or has already been archived.
+    </div>
+<?php elseif ($success === 'invalid'): ?>
+    <div class="alert alert-warning">Please select a valid schedule.</div>
 <?php endif; ?>
 
 <?php if ($error !== ''): ?>
@@ -288,6 +334,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>
                 All statuses
             </option>
+
             <?php foreach ($allowedStatuses as $status): ?>
                 <option value="<?= h($status) ?>"
                     <?= $statusFilter === $status ? 'selected' : '' ?>>
@@ -316,7 +363,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
     <?php if (empty($schedules)): ?>
         <div class="alert alert-info mb-0">
-            No schedules found. Click Add Schedule to create one.
+            No active schedules found. Click Add Schedule to create one.
         </div>
     <?php else: ?>
 
@@ -327,33 +374,47 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 ($item['middle_name'] ?? '') . ' ' .
                 ($item['last_name'] ?? '')
             );
+
             $residentName = preg_replace('/\s+/', ' ', $residentName);
 
-            $statusClass = match ($item['status']) {
+            $itemStatus = $item['status'] ?? 'Scheduled';
+
+            $statusClass = match ($itemStatus) {
                 'Completed' => 'status-completed',
                 'Cancelled' => 'status-cancelled',
                 default => 'status-scheduled'
             };
+
+            $startTime = !empty($item['start_time'])
+                ? strtotime($item['start_time'])
+                : false;
+
+            $endTime = !empty($item['end_time'])
+                ? strtotime($item['end_time'])
+                : false;
             ?>
 
             <div class="schedule-card">
                 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                     <div>
-                        <h3 class="mb-1"><?= h($item['title']) ?></h3>
+                        <h3 class="mb-1"><?= h($item['title'] ?? '') ?></h3>
+
                         <div class="schedule-meta">
-                            Type: <?= h($item['schedule_type']) ?>
+                            Type: <?= h($item['schedule_type'] ?? '') ?>
                             &nbsp;|&nbsp;
-                            Date: <?= h($item['schedule_date']) ?>
+                            Date: <?= h($item['schedule_date'] ?? '') ?>
                             &nbsp;|&nbsp;
-                            Time: <?= h(date('g:i A', strtotime($item['start_time']))) ?>
-                            <?php if (!empty($item['end_time'])): ?>
-                                – <?= h(date('g:i A', strtotime($item['end_time']))) ?>
+                            Time:
+                            <?= $startTime !== false ? h(date('g:i A', $startTime)) : 'Not specified' ?>
+
+                            <?php if ($endTime !== false): ?>
+                                – <?= h(date('g:i A', $endTime)) ?>
                             <?php endif; ?>
                         </div>
                     </div>
 
                     <span class="schedule-status <?= h($statusClass) ?>">
-                        <?= h($item['status']) ?>
+                        <?= h($itemStatus) ?>
                     </span>
                 </div>
 
@@ -361,9 +422,15 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     <div class="col-md-6">
                         <div class="schedule-description">
                             <strong>Resident:</strong>
-                            <?= h($residentName !== ''
-                                ? $residentName
-                                : ($item['resident_id'] ? 'Resident not found' : 'Not assigned')) ?>
+
+                            <?= h(
+                                $residentName !== ''
+                                    ? $residentName
+                                    : (!empty($item['resident_id'])
+                                        ? 'Resident not found'
+                                        : 'Not assigned')
+                            ) ?>
+
                             <?php if (!empty($item['resident_code'])): ?>
                                 (<?= h($item['resident_code']) ?>)
                             <?php endif; ?>
@@ -394,18 +461,31 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
                 <div class="schedule-actions">
                     <a href="view_schedule.php?id=<?= (int)$item['id'] ?>"
-                       class="btn btn-schedule-view">View</a>
+                       class="btn btn-schedule-view">
+                        View
+                    </a>
 
                     <a href="add_schedule.php?edit=<?= (int)$item['id'] ?>"
-                       class="btn btn-schedule-edit">Edit</a>
+                       class="btn btn-schedule-edit">
+                        Edit
+                    </a>
 
-                    <?php if ($_SESSION['role'] === 'admin'): ?>
-                        <form method="POST" action="schedules.php"
+                    <?php if ($isAdmin): ?>
+                        <form method="POST"
+                              action="schedules.php"
                               class="d-inline"
-                              onsubmit="return confirm('Permanently delete this schedule?');">
+                              onsubmit="return confirm('Delete this schedule from the active list? It will be moved to Archive & Restore and can be restored later.');">
+
                             <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="schedule_id"
+
+                            <input type="hidden"
+                                   name="schedule_id"
                                    value="<?= (int)$item['id'] ?>">
+
+                            <input type="hidden"
+                                   name="csrf_token"
+                                   value="<?= h($csrfToken) ?>">
+
                             <button type="submit"
                                     class="btn btn-schedule-delete">
                                 Delete

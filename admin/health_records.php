@@ -1,55 +1,52 @@
+
 <?php
 session_start();
 
-if (!isset($_SESSION['user_id'], $_SESSION['role']) ||
-    !in_array($_SESSION['role'], ['admin', 'staff'], true)) {
+if (
+    !isset($_SESSION['user_id'], $_SESSION['role']) ||
+    !in_array($_SESSION['role'], ['admin', 'staff'], true)
+) {
     header('Location: ../index.php');
     exit;
 }
 
 require_once __DIR__ . '/../config/db.php';
 
+$isAdmin = $_SESSION['role'] === 'admin';
+
+if (empty($_SESSION['health_records_csrf'])) {
+    $_SESSION['health_records_csrf'] = bin2hex(random_bytes(32));
+}
+
+$csrf = $_SESSION['health_records_csrf'];
 $search = trim($_GET['search'] ?? '');
 $filter = $_GET['filter'] ?? 'all';
 $success = $_GET['success'] ?? '';
 $error = '';
 
-/* Delete a health record */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' &&
-    ($_POST['action'] ?? '') === 'delete') {
+function h($value): string
+{
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+}
 
-    if ($_SESSION['role'] !== 'admin') {
+/* Delete means archive. The record is not permanently deleted. */
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    ($_POST['action'] ?? '') === 'archive'
+) {
+    if (!$isAdmin) {
         http_response_code(403);
         exit('Only an administrator can delete health records.');
     }
 
-    $deleteId = filter_input(INPUT_POST, 'record_id', FILTER_VALIDATE_INT);
+    $postedToken = $_POST['csrf_token'] ?? '';
 
-    if ($deleteId) {
-        try {
-            $stmt = $pdo->prepare(
-                'DELETE FROM health_records WHERE id = :id'
-            );
-            $stmt->execute(['id' => $deleteId]);
-
-            header('Location: health_records.php?success=deleted');
-            exit;
-        } catch (PDOException $e) {
-            error_log('Health record deletion error: ' . $e->getMessage());
-            $error = 'Unable to delete this health record.';
-        }
-    } else {
-        $error = 'Invalid health record selected.';
-    }
-}
-/* Archive a health record instead of permanently deleting it */
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    ($_POST['action'] ?? '') === 'delete'
-) {
-    if ($_SESSION['role'] !== 'admin') {
+    if (
+        !is_string($postedToken) ||
+        !hash_equals($csrf, $postedToken)
+    ) {
         http_response_code(403);
-        exit('Only an administrator can archive health records.');
+        exit('Invalid security token. Refresh the page and try again.');
     }
 
     $recordId = filter_input(
@@ -58,7 +55,9 @@ if (
         FILTER_VALIDATE_INT
     );
 
-    if ($recordId) {
+    if (!$recordId || $recordId < 1) {
+        $error = 'Invalid health record selected.';
+    } else {
         try {
             $stmt = $pdo->prepare("
                 UPDATE health_records
@@ -69,19 +68,20 @@ if (
 
             $stmt->execute(['id' => $recordId]);
 
-            header('Location: health_records.php?success=archived');
-            exit;
+            if ($stmt->rowCount() > 0) {
+                header('Location: health_records.php?success=deleted');
+                exit;
+            }
+
+            $error = 'Health record not found or already archived.';
         } catch (PDOException $e) {
             error_log('Health record archive error: ' . $e->getMessage());
-            $error = 'Unable to archive this health record.';
+            $error = 'Unable to delete this health record. Please try again.';
         }
-    } else {
-        $error = 'Invalid health record selected.';
     }
 }
 
-
-/* Fetch health records and resident details */
+/* Show only active records belonging to active residents. */
 $sql = "
     SELECT
         hr.id,
@@ -102,7 +102,7 @@ $sql = "
     FROM health_records hr
     INNER JOIN residents r ON r.id = hr.resident_id
     WHERE hr.archived_at IS NULL
-  AND r.archived_at IS NULL
+      AND r.archived_at IS NULL
 ";
 
 $params = [];
@@ -118,6 +118,7 @@ if ($search !== '') {
     )";
 
     $term = '%' . $search . '%';
+
     $params = [
         'search_code' => $term,
         'search_first' => $term,
@@ -138,152 +139,153 @@ if ($filter === 'allergies') {
 
 $sql .= ' ORDER BY hr.record_date DESC, hr.id DESC';
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$records = $stmt->fetchAll();
-
-function h($value): string
-{
-    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+try {
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log('Health records loading error: ' . $e->getMessage());
+    $records = [];
+    $error = 'Unable to load health records. Please check your database tables.';
 }
 
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 
 <style>
+.page-header {
+    background: #e7f5ec;
+    border: 1px solid #d5eadc;
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin-bottom: 22px;
+}
+
+.page-header h1 {
+    color: #17683a;
+    font-size: 28px;
+    margin: 0 0 6px;
+    font-weight: 700;
+}
+
+.page-header p {
+    color: #61796a;
+    margin: 0;
+}
+
+.health-panel {
+    background: #fff;
+    border: 1px solid #e3eee6;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 16px rgba(24, 75, 42, .05);
+}
+
+.health-search-panel {
+    background: #f3faf5;
+}
+
+.health-card {
+    background: #fff;
+    border: 1px solid #e0ebe3;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 14px;
+    transition: box-shadow .2s;
+}
+
+.health-card:hover {
+    box-shadow: 0 5px 16px rgba(24, 75, 42, .07);
+}
+
+.health-card h3 {
+    color: #17683a;
+    font-size: 19px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.resident-meta {
+    color: #66786c;
+    font-size: 13px;
+    margin-bottom: 14px;
+}
+
+.health-detail {
+    background: #f7faf8;
+    border: 1px solid #e5ede7;
+    border-radius: 9px;
+    padding: 10px;
+    min-height: 42px;
+    overflow-wrap: anywhere;
+}
+
+.health-detail strong {
+    color: #294b35;
+}
+
+.btn-view {
+    color: #198754;
+    background: #fff;
+    border: 1px solid #198754;
+}
+
+.btn-view:hover {
+    color: #fff;
+    background: #198754;
+}
+
+.btn-edit {
+    color: #725800;
+    background: #ffdf70;
+    border: 1px solid #e2b422;
+}
+
+.btn-edit:hover {
+    color: #5d4600;
+    background: #ffcf40;
+    border-color: #d6a000;
+}
+
+.btn-delete {
+    color: #b42318;
+    background: #fff;
+    border: 1px solid #dc3545;
+}
+
+.btn-delete:hover {
+    color: #fff;
+    background: #dc3545;
+}
+
+.record-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 12px;
+}
+
+.record-actions .btn {
+    font-size: 13px;
+    padding: 5px 10px;
+}
+
+.health-search-panel .form-control,
+.health-search-panel .form-select {
+    min-height: 40px;
+}
+
+@media (max-width: 576px) {
     .page-header {
-        background: #e7f5ec;
-        border: 1px solid #d5eadc;
-        border-radius: 14px;
-        padding: 22px 26px;
-        margin-bottom: 22px;
-    }
-
-    .page-header h1 {
-        color: #17683a;
-        font-size: 28px;
-        margin: 0 0 6px;
-        font-weight: 700;
-    }
-
-    .page-header p {
-        color: #61796a;
-        margin: 0;
+        padding: 18px;
     }
 
     .health-panel {
-        background: #fff;
-        border: 1px solid #e3eee6;
-        border-radius: 14px;
-        padding: 20px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 16px rgba(24, 75, 42, .05);
+        padding: 14px;
     }
-
-    .health-search-panel {
-        background: #f3faf5;
-    }
-
-    .health-card {
-        background: #fff;
-        border: 1px solid #e0ebe3;
-        border-radius: 12px;
-        padding: 18px;
-        margin-bottom: 14px;
-        transition: box-shadow .2s;
-    }
-
-    .health-card:hover {
-        box-shadow: 0 5px 16px rgba(24, 75, 42, .07);
-    }
-
-    .health-card h3 {
-        color: #17683a;
-        font-size: 19px;
-        font-weight: 700;
-        margin-bottom: 5px;
-    }
-
-    .resident-meta {
-        color: #66786c;
-        font-size: 13px;
-        margin-bottom: 14px;
-    }
-
-    .health-detail {
-        background: #f7faf8;
-        border: 1px solid #e5ede7;
-        border-radius: 9px;
-        padding: 10px;
-        min-height: 42px;
-        overflow-wrap: anywhere;
-    }
-
-    .health-detail strong {
-        color: #294b35;
-    }
-
-    .btn-view {
-        color: #198754;
-        background: #fff;
-        border: 1px solid #198754;
-    }
-
-    .btn-view:hover {
-        color: #fff;
-        background: #198754;
-    }
-
-    .btn-edit {
-        color: #d6a000;
-        background: #fff;
-        border: 1px solid #e2b422;
-    }
-
-    .btn-edit:hover {
-        color: #5d4600;
-        background: #fff8d9;
-        border-color: #d6a000;
-    }
-
-    .btn-delete {
-        color: #dc3545;
-        background: #fff;
-        border: 1px solid #dc3545;
-    }
-
-    .btn-delete:hover {
-        color: #fff;
-        background: #dc3545;
-    }
-
-    .record-actions {
-        display: flex;
-        justify-content: flex-end;
-        flex-wrap: wrap;
-        gap: 7px;
-        margin-top: 12px;
-    }
-
-    .record-actions .btn {
-        font-size: 13px;
-        padding: 5px 10px;
-    }
-
-    .health-search-panel .form-control,
-    .health-search-panel .form-select {
-        min-height: 40px;
-    }
-
-    @media (max-width: 576px) {
-        .page-header {
-            padding: 18px;
-        }
-
-        .health-panel {
-            padding: 14px;
-        }
-    }
+}
 </style>
 
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
@@ -304,13 +306,17 @@ require_once __DIR__ . '/../includes/sidebar.php';
 </div>
 
 <?php if ($success === 'added'): ?>
-    <div class="alert alert-success">Health record added successfully.</div>
+    <div class="alert alert-success">
+        Health record added successfully.
+    </div>
 <?php elseif ($success === 'updated'): ?>
-    <div class="alert alert-success">Health record updated successfully.</div>
-<?php elseif ($success === 'archived'): ?>
-    <div class="alert alert-success">Health record archived successfully.</div>
+    <div class="alert alert-success">
+        Health record updated successfully.
+    </div>
 <?php elseif ($success === 'deleted'): ?>
-    <div class="alert alert-success">Health record deleted successfully.</div>
+    <div class="alert alert-success">
+        Health record deleted successfully and moved to Archive &amp; Restore.
+    </div>
 <?php endif; ?>
 
 <?php if ($error !== ''): ?>
@@ -353,7 +359,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 </div>
 
 <div class="health-panel">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h2 class="h5 mb-0">List of Patients</h2>
         <span class="text-secondary"><?= count($records) ?> record(s)</span>
     </div>
@@ -366,12 +372,12 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
         <?php foreach ($records as $record): ?>
             <?php
-                $fullName = trim(
-                    $record['first_name'] . ' ' .
-                    ($record['middle_name'] ?? '') . ' ' .
-                    $record['last_name']
-                );
-                $fullName = preg_replace('/\s+/', ' ', $fullName);
+            $fullName = trim(
+                ($record['first_name'] ?? '') . ' ' .
+                ($record['middle_name'] ?? '') . ' ' .
+                ($record['last_name'] ?? '')
+            );
+            $fullName = preg_replace('/\s+/', ' ', $fullName);
             ?>
 
             <div class="health-card">
@@ -451,14 +457,21 @@ require_once __DIR__ . '/../includes/sidebar.php';
                         class="btn btn-edit"
                     >Edit</a>
 
-                    <?php if ($_SESSION['role'] === 'admin'): ?>
-                        <form method="POST"
-                              action="health_records.php"
-                              onsubmit="return confirm('Are you sure you want to permanently delete this health record?');"
-                              class="d-inline">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="record_id"
-                                   value="<?= (int)$record['id'] ?>">
+                    <?php if ($isAdmin): ?>
+                        <form
+                            method="POST"
+                            action="health_records.php"
+                            onsubmit="return confirm('Delete this health record? It will be moved to Archive & Restore, where you can restore it later.');"
+                            class="d-inline"
+                        >
+                            <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+                            <input type="hidden" name="action" value="archive">
+                            <input
+                                type="hidden"
+                                name="record_id"
+                                value="<?= (int)$record['id'] ?>"
+                            >
+
                             <button type="submit" class="btn btn-delete">
                                 Delete
                             </button>
