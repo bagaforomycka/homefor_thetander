@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 require_once __DIR__ . '/../config/db.php';
@@ -6,29 +5,14 @@ require_once __DIR__ . '/../config/db.php';
 $error = '';
 $success = '';
 
-/*
-  Admin registration is available only when no Admin account exists.
-  Caretaker accounts require Admin approval.
-*/
-
-try {
-    $stmt = $pdo->prepare(
-        "SELECT COUNT(*) FROM users WHERE role = 'admin'"
-    );
-    $stmt->execute();
-    $adminExists = (int) $stmt->fetchColumn() > 0;
-} catch (PDOException $e) {
-    exit('Unable to check user accounts. Please verify your database setup.');
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $fullName = trim($_POST['full_name'] ?? '');
-    $username = trim($_POST['username'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $fullName        = trim($_POST['full_name'] ?? '');
+    $username        = trim($_POST['username'] ?? '');
+    $email           = trim($_POST['email'] ?? '');
+    $password        = $_POST['password'] ?? '';
     $confirmPassword = $_POST['confirm_password'] ?? '';
-    $role = $_POST['role'] ?? '';
-    $acceptedTerms = isset($_POST['accept_terms']);
+    $role            = $_POST['role'] ?? '';
+    $acceptedTerms   = isset($_POST['accept_terms']);
 
     if ($fullName === '' || $username === '' || $email === '') {
         $error = 'Please complete all required fields.';
@@ -44,22 +28,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'You must read and accept the Terms and Conditions.';
     } elseif (!in_array($role, ['admin', 'caretaker'], true)) {
         $error = 'Please select a valid account type.';
-    } elseif ($role === 'admin' && $adminExists) {
-        $error = 'An Admin account already exists. Ask an existing Admin to create additional accounts.';
     } else {
         try {
-            $check = $pdo->prepare(
-                'SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1'
-            );
+            // Check if username or email already exists
+            $check = $pdo->prepare('SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1');
             $check->execute([$username, $email]);
 
             if ($check->fetch()) {
                 $error = 'That username or email address is already registered.';
             } else {
                 $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-
-                // The first Admin is active. Caretaker accounts await approval.
-                $status = ($role === 'admin') ? 'active' : 'inactive';
+                $status = 'active';
 
                 $insert = $pdo->prepare(
                     'INSERT INTO users (full_name, username, email, password, role, status)
@@ -75,12 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $status
                 ]);
 
-                if ($role === 'admin') {
-                    $success = 'Admin account created successfully. You can now log in.';
-                    $adminExists = true;
-                } else {
-                    $success = 'Caretaker account created. Please wait for an Admin to activate your account.';
-                }
+                $success = ucfirst($role) . ' account created successfully. You can now log in.';
             }
         } catch (PDOException $e) {
             error_log($e->getMessage());
@@ -96,8 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Account | Home for the Aged</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
         body {
@@ -176,19 +149,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="mb-3">
                 <label for="role" class="form-label">Account Type</label>
                 <select class="form-select" id="role" name="role" required>
-                    <option value="">Choose account type</option>
-
-                    <?php if (!$adminExists): ?>
-                        <option value="admin"
-                            <?= (($_POST['role'] ?? '') === 'admin') ? 'selected' : '' ?>>
-                            Admin (initial setup only)
-                        </option>
-                    <?php endif; ?>
-
-                    <option value="caretaker"
-                        <?= (($_POST['role'] ?? '') === 'caretaker') ? 'selected' : '' ?>>
-                        Caretaker
-                    </option>
+                    <option value="" disabled <?= empty($_POST['role']) ? 'selected' : '' ?>>Choose account type</option>
+                    <option value="admin" <?= (($_POST['role'] ?? '') === 'admin') ? 'selected' : '' ?>>Admin</option>
+                    <option value="caretaker" <?= (($_POST['role'] ?? '') === 'caretaker') ? 'selected' : '' ?>>Caretaker</option>
                 </select>
             </div>
 
