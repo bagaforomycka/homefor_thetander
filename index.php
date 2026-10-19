@@ -81,6 +81,23 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
             text-shadow: 0 2px 4px rgba(255, 255, 255, 0.8); /* Crisp pop against the photo */
         }
 
+        .hero-heading {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .hero-logo {
+            flex: 0 0 auto;
+            width: 110px;
+            height: auto;
+        }
+
+        .hero-heading .hero-title {
+            margin: 0;
+            font-size: clamp(1.7rem, 3vw, 2.8rem);
+        }
+
         .hero-description {
             color: #263e30;
             font-size: 1.05rem;
@@ -213,6 +230,10 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                 padding: 40px 0;
             }
 
+            .hero-logo {
+                width: 80px;
+            }
+
             .login-card {
                 padding: 24px;
             }
@@ -250,9 +271,15 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                     Compassionate Senior Care
                 </span>
 
-                <h1 class="hero-title">
-                    A Place Where Care Feels Like Family
-                </h1>
+                <div class="hero-heading">
+                    <img src="images/home.png"
+                         alt="Home for the Aged logo"
+                         class="hero-logo">
+
+                    <h1 class="hero-title">
+                        A Place Where Care Feels Like Family
+                    </h1>
+                </div>
 
                 <p class="hero-description mt-4">
                     At Home for the Aged, we believe every senior deserves
