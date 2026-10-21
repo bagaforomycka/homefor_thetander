@@ -292,36 +292,248 @@ function sidebarLink(string $href, string $label, string $page, string $currentP
 <title>Reports | Home for the Aged</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-:root{--sidebar-width:250px;--sidebar-green:#063b18;--page-bg:#f5f8f6}
-*{box-sizing:border-box}
-body{margin:0;background:var(--page-bg);font-family:Arial,sans-serif;color:#18251d}
-.app-sidebar{position:fixed;top:0;left:0;width:var(--sidebar-width);height:100vh;overflow-y:auto;padding:24px 16px;background:var(--sidebar-green);color:#fff;z-index:1000}
-.sidebar-brand{font-size:21px;font-weight:bold;margin-bottom:6px}
-.sidebar-subtitle{font-size:13px;margin-bottom:28px;opacity:.9}
-.sidebar-section{margin:20px 10px 8px;font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;opacity:.8}
-.sidebar-link{display:block;color:#fff;text-decoration:none;padding:11px 12px;border-radius:8px;margin-bottom:5px;font-size:14px}
-.sidebar-link:hover,.sidebar-link.active{background:rgba(255,255,255,.22);color:#fff}
-.app-main{margin-left:var(--sidebar-width);width:calc(100% - var(--sidebar-width));min-height:100vh;padding:28px}
-.panel{background:#fff;border:1px solid #e1e9e4;border-radius:12px;padding:20px;margin-bottom:20px}
-.stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:20px}
-.stat-label{color:#68766f;font-size:14px}.stat-value{font-size:30px;font-weight:bold;margin-top:8px}
-.form-control,.form-select{min-height:42px}
-.table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{padding:11px;border-bottom:1px solid #e6ece8;text-align:left;vertical-align:top}
-th{background:#edf4f0;color:#294b3c;white-space:nowrap}
-.pill{display:inline-block;padding:4px 9px;border-radius:20px;background:#e0f3e7;color:#176b4d;font-size:12px}
-.pill-archived{background:#fff0d7;color:#875600}
-.small-muted{font-size:12px;color:#68766f}
-@media(max-width:768px){:root{--sidebar-width:190px}.app-sidebar{padding:18px 10px}.app-main{padding:18px 12px}}
-@media(max-width:560px){.app-sidebar{position:relative;width:100%;height:auto}.app-main{margin-left:0;width:100%;padding:16px}.stat-grid{grid-template-columns:1fr}}
-@media print{.app-sidebar,.no-print{display:none!important}.app-main{margin:0;padding:0;width:100%}body{background:#fff}.panel{border:0;padding:8px}table{font-size:9px}th,td{padding:5px}}
+:root {
+    --sidebar-width: 250px;
+    --sidebar-green: #063b18;
+    --page-bg: #f5f8f6;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--page-bg);
+    font-family: Arial, sans-serif;
+    color: #18251d;
+}
+
+/* SIDEBAR */
+.app-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 16px;
+    background: var(--sidebar-green);
+    color: #fff;
+    z-index: 1000;
+}
+
+.sidebar-logo {
+    display: block;
+    padding: 10px 4px 6px;
+   
+}
+
+.sidebar-logo a {
+    display: block;
+}
+
+.sidebar-logo img {
+            display: block;
+            width: 97%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+}
+
+.sidebar-section {
+    margin: 28px 10px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: .8;
+}
+
+.sidebar-link {
+    display: block;
+    color: #fff;
+    text-decoration: none;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+
+.sidebar-link:hover,
+.sidebar-link.active {
+    background: rgba(255, 255, 255, .22);
+    color: #fff;
+}
+
+/* MAIN CONTENT */
+.app-main {
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+    min-height: 100vh;
+    padding: 36px 40px;
+}
+
+.panel {
+    background: #fff;
+    border: 1px solid #e1e9e4;
+    border-radius: 12px;
+    padding: 26px;
+    margin-bottom: 26px;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
+    margin-bottom: 26px;
+}
+
+.stat-grid .panel {
+    margin-bottom: 0;
+}
+
+.stat-label {
+    color: #68766f;
+    font-size: 14px;
+}
+
+.stat-value {
+    font-size: 30px;
+    font-weight: bold;
+    margin-top: 8px;
+}
+
+.form-control,
+.form-select {
+    min-height: 42px;
+}
+
+/* TABLES */
+.table-wrap {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+th,
+td {
+    padding: 14px 12px;
+    border-bottom: 1px solid #e6ece8;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background: #edf4f0;
+    color: #294b3c;
+    white-space: nowrap;
+}
+
+/* BADGES AND SMALL TEXT */
+.pill {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 20px;
+    background: #e0f3e7;
+    color: #176b4d;
+    font-size: 12px;
+}
+
+.pill-archived {
+    background: #fff0d7;
+    color: #875600;
+}
+
+.small-muted {
+    font-size: 12px;
+    color: #68766f;
+}
+
+/* TABLET */
+@media (max-width: 768px) {
+    :root {
+        --sidebar-width: 190px;
+    }
+
+    .app-sidebar {
+        padding: 18px 10px;
+    }
+
+    .app-main {
+        padding: 22px 16px;
+    }
+
+    .panel {
+        padding: 18px;
+    }
+}
+
+/* PHONE */
+@media (max-width: 560px) {
+    .app-sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+    }
+
+    .app-main {
+        margin-left: 0;
+        width: 100%;
+        padding: 16px;
+    }
+
+    .stat-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* PRINT */
+@media print {
+    .app-sidebar,
+    .no-print {
+        display: none !important;
+    }
+
+    .app-main {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+    }
+
+    body {
+        background: #fff;
+    }
+
+    .panel {
+        border: 0;
+        padding: 8px;
+    }
+
+    table {
+        font-size: 9px;
+    }
+
+    th,
+    td {
+        padding: 5px;
+    }
+}
 </style>
 </head>
 <body>
 <aside class="app-sidebar">
-    <div class="sidebar-brand">Home for the Aged</div>
-    <div class="sidebar-subtitle">Care Management System</div>
+    <div class="sidebar-logo">
+        <a href="/homefor_thetander/admin/dashboard.php">
+            <img src="/homefor_thetander/images/white1.png"
+                 alt="Home for the Aged - Care, Comfort, Dignity">
+        </a>
+    </div>
     <?php if (in_array($currentRole, ['admin', 'staff'], true)): ?>
         <div class="sidebar-section">Main Menu</div>
         <?php

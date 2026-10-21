@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -171,6 +170,25 @@ try {
             color: var(--text);
             font-family: Arial, sans-serif;
             overflow-x: hidden;
+        }
+
+        /* SIDEBAR LOGO (injected at top of sidebar) */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
+
+        .sidebar-logo a {
+            display: block;
+        }
+
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
         }
 
         .main-content {
@@ -420,5 +438,44 @@ try {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+
+    if (!sidebar) {
+        return;
+    }
+
+    // Hide the old text title and subtitle
+    var oldTexts = ['home for the aged', 'care management system'];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    // Add the logo
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="dashboard.php">' +
+            '<img src="../images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
+
 </body>
 </html>

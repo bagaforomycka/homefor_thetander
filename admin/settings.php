@@ -483,6 +483,25 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             font-family: Arial, Helvetica, sans-serif;
         }
 
+        /* SIDEBAR LOGO (injected at top of sidebar) */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
+
+        .sidebar-logo a {
+            display: block;
+        }
+
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
+
         /*
          * IMPORTANT:
          * The shared includes/sidebar.php provides the sidebar and opens
@@ -1367,6 +1386,44 @@ require_once __DIR__ . '/../includes/sidebar.php';
     Signed in as <?= settingsEscape($currentUser) ?>.
     Settings changes are saved to the database.
 </p>
+
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+
+    if (!sidebar) {
+        return;
+    }
+
+    // Hide the old text title and subtitle
+    var oldTexts = ['home for the aged', 'care management system'];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    // Add the logo
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
 
 <!-- Do not add another </main> here.
      The shared includes/sidebar.php already opened the main element. -->
