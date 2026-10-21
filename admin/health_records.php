@@ -1,7 +1,8 @@
 
+Health records · PHP
 <?php
 session_start();
-
+ 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
     !in_array($_SESSION['role'], ['admin', 'staff'], true)
@@ -9,26 +10,26 @@ if (
     header('Location: ../index.php');
     exit;
 }
-
+ 
 require_once __DIR__ . '/../config/db.php';
-
+ 
 $isAdmin = $_SESSION['role'] === 'admin';
-
+ 
 if (empty($_SESSION['health_records_csrf'])) {
     $_SESSION['health_records_csrf'] = bin2hex(random_bytes(32));
 }
-
+ 
 $csrf = $_SESSION['health_records_csrf'];
 $search = trim($_GET['search'] ?? '');
 $filter = $_GET['filter'] ?? 'all';
 $success = $_GET['success'] ?? '';
 $error = '';
-
+ 
 function h($value): string
 {
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
-
+ 
 /* Delete means archive. The record is not permanently deleted. */
 if (
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
@@ -38,9 +39,9 @@ if (
         http_response_code(403);
         exit('Only an administrator can delete health records.');
     }
-
+ 
     $postedToken = $_POST['csrf_token'] ?? '';
-
+ 
     if (
         !is_string($postedToken) ||
         !hash_equals($csrf, $postedToken)
@@ -48,13 +49,13 @@ if (
         http_response_code(403);
         exit('Invalid security token. Refresh the page and try again.');
     }
-
+ 
     $recordId = filter_input(
         INPUT_POST,
         'record_id',
         FILTER_VALIDATE_INT
     );
-
+ 
     if (!$recordId || $recordId < 1) {
         $error = 'Invalid health record selected.';
     } else {
@@ -65,14 +66,14 @@ if (
                 WHERE id = :id
                   AND archived_at IS NULL
             ");
-
+ 
             $stmt->execute(['id' => $recordId]);
-
+ 
             if ($stmt->rowCount() > 0) {
                 header('Location: health_records.php?success=deleted');
                 exit;
             }
-
+ 
             $error = 'Health record not found or already archived.';
         } catch (PDOException $e) {
             error_log('Health record archive error: ' . $e->getMessage());
@@ -80,7 +81,7 @@ if (
         }
     }
 }
-
+ 
 /* Show only active records belonging to active residents. */
 $sql = "
     SELECT
@@ -104,9 +105,9 @@ $sql = "
     WHERE hr.archived_at IS NULL
       AND r.archived_at IS NULL
 ";
-
+ 
 $params = [];
-
+ 
 if ($search !== '') {
     $sql .= " AND (
         r.resident_id LIKE :search_code
@@ -116,9 +117,9 @@ if ($search !== '') {
         OR hr.medical_conditions LIKE :search_condition
         OR hr.allergies LIKE :search_allergies
     )";
-
+ 
     $term = '%' . $search . '%';
-
+ 
     $params = [
         'search_code' => $term,
         'search_first' => $term,
@@ -128,7 +129,7 @@ if ($search !== '') {
         'search_allergies' => $term
     ];
 }
-
+ 
 if ($filter === 'allergies') {
     $sql .= " AND hr.allergies IS NOT NULL
               AND TRIM(hr.allergies) <> ''";
@@ -136,9 +137,9 @@ if ($filter === 'allergies') {
     $sql .= " AND hr.medical_conditions IS NOT NULL
               AND TRIM(hr.medical_conditions) <> ''";
 }
-
+ 
 $sql .= ' ORDER BY hr.record_date DESC, hr.id DESC';
-
+ 
 try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -148,11 +149,30 @@ try {
     $records = [];
     $error = 'Unable to load health records. Please check your database tables.';
 }
-
+ 
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
-
+ 
 <style>
+/* SIDEBAR LOGO (injected at top of sidebar) */
+.sidebar-logo {
+    display: block;
+    padding: 10px 4px 6px;
+}
+ 
+.sidebar-logo a {
+    display: block;
+}
+ 
+.sidebar-logo img {
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+    margin: 0 auto;
+    transform: scale(1.1);
+}
+ 
 .page-header {
     background: #e7f5ec;
     border: 1px solid #d5eadc;
@@ -160,19 +180,19 @@ require_once __DIR__ . '/../includes/sidebar.php';
     padding: 22px 26px;
     margin-bottom: 22px;
 }
-
+ 
 .page-header h1 {
     color: #17683a;
     font-size: 28px;
     margin: 0 0 6px;
     font-weight: 700;
 }
-
+ 
 .page-header p {
     color: #61796a;
     margin: 0;
 }
-
+ 
 .health-panel {
     background: #fff;
     border: 1px solid #e3eee6;
@@ -181,11 +201,11 @@ require_once __DIR__ . '/../includes/sidebar.php';
     margin-bottom: 20px;
     box-shadow: 0 4px 16px rgba(24, 75, 42, .05);
 }
-
+ 
 .health-search-panel {
     background: #f3faf5;
 }
-
+ 
 .health-card {
     background: #fff;
     border: 1px solid #e0ebe3;
@@ -194,24 +214,24 @@ require_once __DIR__ . '/../includes/sidebar.php';
     margin-bottom: 14px;
     transition: box-shadow .2s;
 }
-
+ 
 .health-card:hover {
     box-shadow: 0 5px 16px rgba(24, 75, 42, .07);
 }
-
+ 
 .health-card h3 {
     color: #17683a;
     font-size: 19px;
     font-weight: 700;
     margin-bottom: 5px;
 }
-
+ 
 .resident-meta {
     color: #66786c;
     font-size: 13px;
     margin-bottom: 14px;
 }
-
+ 
 .health-detail {
     background: #f7faf8;
     border: 1px solid #e5ede7;
@@ -220,45 +240,45 @@ require_once __DIR__ . '/../includes/sidebar.php';
     min-height: 42px;
     overflow-wrap: anywhere;
 }
-
+ 
 .health-detail strong {
     color: #294b35;
 }
-
+ 
 .btn-view {
     color: #198754;
     background: #fff;
     border: 1px solid #198754;
 }
-
+ 
 .btn-view:hover {
     color: #fff;
     background: #198754;
 }
-
+ 
 .btn-edit {
     color: #725800;
     background: #ffdf70;
     border: 1px solid #e2b422;
 }
-
+ 
 .btn-edit:hover {
     color: #5d4600;
     background: #ffcf40;
     border-color: #d6a000;
 }
-
+ 
 .btn-delete {
     color: #b42318;
     background: #fff;
     border: 1px solid #dc3545;
 }
-
+ 
 .btn-delete:hover {
     color: #fff;
     background: #dc3545;
 }
-
+ 
 .record-actions {
     display: flex;
     justify-content: flex-end;
@@ -266,45 +286,45 @@ require_once __DIR__ . '/../includes/sidebar.php';
     gap: 7px;
     margin-top: 12px;
 }
-
+ 
 .record-actions .btn {
     font-size: 13px;
     padding: 5px 10px;
 }
-
+ 
 .health-search-panel .form-control,
 .health-search-panel .form-select {
     min-height: 40px;
 }
-
+ 
 @media (max-width: 576px) {
     .page-header {
         padding: 18px;
     }
-
+ 
     .health-panel {
         padding: 14px;
     }
 }
 </style>
-
+ 
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
         <h1>Health Records</h1>
         <p>View and manage residents' health information.</p>
     </div>
-
+ 
     <div class="d-flex gap-2 flex-wrap">
         <a href="dashboard.php" class="btn btn-outline-success">
             ← Back to Dashboard
         </a>
-
+ 
         <a href="add_health_record.php" class="btn btn-success">
             + Add Health Record
         </a>
     </div>
 </div>
-
+ 
 <?php if ($success === 'added'): ?>
     <div class="alert alert-success">
         Health record added successfully.
@@ -318,15 +338,15 @@ require_once __DIR__ . '/../includes/sidebar.php';
         Health record deleted successfully and moved to Archive &amp; Restore.
     </div>
 <?php endif; ?>
-
+ 
 <?php if ($error !== ''): ?>
     <div class="alert alert-danger"><?= h($error) ?></div>
 <?php endif; ?>
-
+ 
 <div class="health-panel health-search-panel">
     <form method="GET" action="health_records.php"
           class="d-flex flex-wrap gap-2 align-items-center">
-
+ 
         <input
             type="text"
             name="search"
@@ -335,7 +355,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             placeholder="Search resident, name, or ID..."
             value="<?= h($search) ?>"
         >
-
+ 
         <select name="filter" class="form-select" style="width:auto; min-width:170px">
             <option value="all" <?= $filter === 'all' ? 'selected' : '' ?>>
                 All records
@@ -347,29 +367,29 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 With medical conditions
             </option>
         </select>
-
+ 
         <button type="submit" class="btn btn-success">
             Search / Filter
         </button>
-
+ 
         <a href="health_records.php" class="btn btn-outline-secondary">
             Reset
         </a>
     </form>
 </div>
-
+ 
 <div class="health-panel">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h2 class="h5 mb-0">List of Patients</h2>
         <span class="text-secondary"><?= count($records) ?> record(s)</span>
     </div>
-
+ 
     <?php if (empty($records)): ?>
         <div class="alert alert-info mb-0">
             No health records found. Add a health record or change your search.
         </div>
     <?php else: ?>
-
+ 
         <?php foreach ($records as $record): ?>
             <?php
             $fullName = trim(
@@ -379,10 +399,10 @@ require_once __DIR__ . '/../includes/sidebar.php';
             );
             $fullName = preg_replace('/\s+/', ' ', $fullName);
             ?>
-
+ 
             <div class="health-card">
                 <h3><?= h($fullName) ?></h3>
-
+ 
                 <div class="resident-meta">
                     Resident ID: <?= h($record['resident_code']) ?>
                     &nbsp;|&nbsp;
@@ -390,7 +410,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     &nbsp;|&nbsp;
                     Check-up: <?= h($record['record_date']) ?>
                 </div>
-
+ 
                 <div class="row g-2">
                     <div class="col-md-6">
                         <div class="health-detail">
@@ -398,14 +418,14 @@ require_once __DIR__ . '/../includes/sidebar.php';
                             <?= h($record['blood_pressure'] ?: 'Not recorded') ?>
                         </div>
                     </div>
-
+ 
                     <div class="col-md-6">
                         <div class="health-detail">
                             <strong>Allergies:</strong>
                             <?= h($record['allergies'] ?: 'None recorded') ?>
                         </div>
                     </div>
-
+ 
                     <div class="col-md-6">
                         <div class="health-detail">
                             <strong>Temperature:</strong>
@@ -414,14 +434,14 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                 : 'Not recorded') ?>
                         </div>
                     </div>
-
+ 
                     <div class="col-md-6">
                         <div class="health-detail">
                             <strong>Medication:</strong>
                             <?= h($record['medications'] ?: 'None recorded') ?>
                         </div>
                     </div>
-
+ 
                     <div class="col-md-6">
                         <div class="health-detail">
                             <strong>Weight:</strong>
@@ -430,14 +450,14 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                 : 'Not recorded') ?>
                         </div>
                     </div>
-
+ 
                     <div class="col-md-6">
                         <div class="health-detail">
                             <strong>Medical Condition:</strong>
                             <?= h($record['medical_conditions'] ?: 'None recorded') ?>
                         </div>
                     </div>
-
+ 
                     <div class="col-md-6">
                         <div class="health-detail">
                             <strong>Notes:</strong>
@@ -445,18 +465,18 @@ require_once __DIR__ . '/../includes/sidebar.php';
                         </div>
                     </div>
                 </div>
-
+ 
                 <div class="record-actions">
                     <a
                         href="view_health_record.php?id=<?= (int)$record['id'] ?>"
                         class="btn btn-view"
                     >View</a>
-
+ 
                     <a
                         href="add_health_record.php?edit=<?= (int)$record['id'] ?>"
                         class="btn btn-edit"
                     >Edit</a>
-
+ 
                     <?php if ($isAdmin): ?>
                         <form
                             method="POST"
@@ -471,7 +491,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                 name="record_id"
                                 value="<?= (int)$record['id'] ?>"
                             >
-
+ 
                             <button type="submit" class="btn btn-delete">
                                 Delete
                             </button>
@@ -480,10 +500,49 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 </div>
             </div>
         <?php endforeach; ?>
-
+ 
     <?php endif; ?>
 </div>
-
+ 
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+ 
+    if (!sidebar) {
+        return;
+    }
+ 
+    // Hide the old text title and subtitle
+    var oldTexts = ['home for the aged', 'care management system'];
+ 
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+ 
+    // Add the logo
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="dashboard.php">' +
+            '<img src="../images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+ 
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
+ 
 </main>
 </body>
 </html>
+ 
