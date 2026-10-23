@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -224,56 +223,138 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-
-require_once __DIR__ . '/../includes/sidebar.php';
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><?= $isEdit ? 'Edit Schedule' : 'Add Schedule' ?> | Home for the Aged</title>
 
-<style>
-.schedule-form-header {
-    background: #eaf6ee;
-    border: 1px solid #d8eadc;
-    border-radius: 14px;
-    padding: 22px 26px;
-    margin-bottom: 22px;
-}
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
 
-.schedule-form-header h1 {
-    color: #17683a;
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 6px;
-}
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-.schedule-form-header p {
-    color: #61796a;
-    margin: 0;
-}
+        body {
+            margin: 0;
+            background: #f4f8f5;
+            color: #304b3b;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow-x: hidden;
+        }
 
-.schedule-form-panel {
-    background: #fff;
-    border: 1px solid #e3eee6;
-    border-radius: 14px;
-    padding: 24px;
-    box-shadow: 0 4px 16px rgba(24,75,42,.05);
-}
+        /* SIDEBAR LOGO */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
 
-.schedule-form-panel label {
-    font-weight: 600;
-    color: #304b3b;
-}
+        .sidebar-logo a {
+            display: block;
+        }
 
-.schedule-form-panel .form-control,
-.schedule-form-panel .form-select {
-    min-height: 43px;
-}
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
 
-@media (max-width: 576px) {
-    .schedule-form-header,
-    .schedule-form-panel {
-        padding: 16px;
-    }
-}
-</style>
+        /* app-main opened in sidebar.php */
+        .app-main {
+            margin-left: 250px !important;
+            width: calc(100% - 250px) !important;
+            max-width: none !important;
+            min-width: 0;
+            min-height: 100vh;
+            padding: 16px 24px !important;
+            margin-top: 0 !important;
+            box-shadow: none !important;
+            overflow-x: hidden;
+        }
+
+        .schedule-form-header {
+            background: #edf8ef;
+            border: 1px solid #dcecdf;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+
+        .schedule-form-header h1 {
+            color: #17683a;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .schedule-form-header p {
+            color: #61796a;
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .schedule-form-panel {
+            background: #fff;
+            border: 1px solid #e3eee6;
+            border-radius: 10px;
+            padding: 18px;
+            box-shadow: 0 2px 10px rgba(24,75,42,.04);
+        }
+
+        .schedule-form-panel label {
+            font-weight: 600;
+            color: #17683a;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .schedule-form-panel .form-control,
+        .schedule-form-panel .form-select {
+            min-height: 38px;
+            font-size: 13px;
+            border-color: #cedbd1;
+        }
+
+        .schedule-form-panel .form-control:focus,
+        .schedule-form-panel .form-select:focus {
+            border-color: #33b960;
+            box-shadow: 0 0 0 0.15rem rgba(51, 185, 96, 0.15);
+        }
+
+        .sidebar-link.active {
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        @media (max-width: 760px) {
+            .app-main {
+                margin-left: 0 !important;
+                width: 100% !important;
+                padding: 10px !important;
+            }
+
+            .schedule-form-header,
+            .schedule-form-panel {
+                padding: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<?php 
+// sidebar.php opens <main class="app-main">
+require_once __DIR__ . '/../includes/sidebar.php'; 
+?>
 
 <div class="schedule-form-header d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
@@ -281,13 +362,13 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <p><?= $isEdit ? 'Update the schedule information below.' : 'Enter the details for a new schedule.' ?></p>
     </div>
 
-    <a href="schedules.php" class="btn btn-outline-success">
+    <a href="schedules.php" class="btn btn-outline-success btn-sm">
         ← Back to Schedules
     </a>
 </div>
 
 <?php if ($error !== ''): ?>
-    <div class="alert alert-danger"><?= h($error) ?></div>
+    <div class="alert alert-danger py-2 px-3 mb-3 fs-6"><?= h($error) ?></div>
 <?php endif; ?>
 
 <div class="schedule-form-panel">
@@ -295,7 +376,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <input type="hidden" name="schedule_id"
                value="<?= $isEdit ? (int)$scheduleId : '' ?>">
 
-        <div class="row g-3">
+        <div class="row g-2">
             <div class="col-md-8">
                 <label for="title" class="form-label">Schedule Title *</label>
                 <input type="text" class="form-control" id="title"
@@ -395,23 +476,63 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <div class="col-12">
                 <label for="description" class="form-label">Description / Notes</label>
                 <textarea class="form-control" id="description"
-                          name="description" rows="4"
+                          name="description" rows="3"
                           placeholder="Add details or instructions"><?= h($data['description']) ?></textarea>
             </div>
         </div>
 
-        <div class="d-flex gap-2 flex-wrap mt-4">
-            <button type="submit" class="btn btn-success px-4">
+        <div class="d-flex gap-2 flex-wrap mt-3">
+            <button type="submit" class="btn btn-success px-4 btn-sm">
                 <?= $isEdit ? 'Save Changes' : 'Save Schedule' ?>
             </button>
 
-            <a href="schedules.php" class="btn btn-outline-secondary">
+            <a href="schedules.php" class="btn btn-outline-secondary btn-sm">
                 Cancel
             </a>
         </div>
     </form>
 </div>
 
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+
+    if (!sidebar) {
+        return;
+    }
+
+    var oldTexts = ['home for the aged', 'care management system'];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
+
+<!-- sidebar.php already opened <main class="app-main">, close it here -->
 </main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>

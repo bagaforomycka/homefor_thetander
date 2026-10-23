@@ -1,10 +1,9 @@
-
 <?php
 session_start();
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    $_SESSION['role'] !== 'admin'
+    !in_array($_SESSION['role'], ['admin', 'staff'], true)
 ) {
     http_response_code(403);
     exit('Access denied. Only administrators can manage the archive.');
@@ -16,11 +15,6 @@ if (empty($_SESSION['archive_csrf'])) {
     $_SESSION['archive_csrf'] = bin2hex(random_bytes(32));
 }
 
-/*
- * Tables managed by the Archive page.
- * Reports and Messages are included in the selector, but their
- * database tables must exist and contain archived_at to be managed.
- */
 $modules = [
     'residents' => [
         'label' => 'Residents',
@@ -100,9 +94,6 @@ function archiveEscape($value): string
     return '[Data]';
 }
 
-/*
- * Check table existence without trusting user-supplied table names.
- */
 function archiveTableExists(PDO $pdo, string $table): bool
 {
     $stmt = $pdo->prepare("
@@ -140,9 +131,6 @@ function archiveGetColumns(PDO $pdo, string $table): array
     return $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
-/*
- * Handle restore and permanent-delete actions.
- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postedToken = $_POST['csrf_token'] ?? '';
 
@@ -256,9 +244,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-/*
- * Check the selected table and retrieve its archived records.
- */
 $table = $modules[$selectedModule]['table'];
 
 try {
@@ -288,9 +273,6 @@ try {
 
                 $archivedRecords = $stmt->fetchAll();
 
-                /*
-                 * Hide sensitive fields such as password hashes.
-                 */
                 $hiddenColumns = [
                     'password',
                     'password_hash',
@@ -318,9 +300,6 @@ try {
                     6
                 );
 
-                /*
-                 * Search the archived records in the displayed results.
-                 */
                 if ($search !== '') {
                     $archivedRecords = array_values(
                         array_filter(
@@ -355,123 +334,193 @@ try {
 }
 
 $success = $_GET['success'] ?? '';
-
-require_once __DIR__ . '/../includes/sidebar.php';
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Archive &amp; Restore | Home for the Aged</title>
 
-<style>
-    .archive-header {
-        background: #e7f5ec;
-        border: 1px solid #d5eadc;
-        border-radius: 14px;
-        padding: 24px;
-        margin-bottom: 22px;
-    }
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          rel="stylesheet">
 
-    .archive-header h1 {
-        color: #17683a;
-        font-size: 28px;
-        font-weight: 700;
-        margin: 0 0 6px;
-    }
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-    .archive-header p {
-        color: #61796a;
-        margin: 0;
-    }
+        body {
+            margin: 0;
+            background: #f4f8f5;
+            color: #304b3b;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow-x: hidden;
+        }
 
-    .archive-panel {
-        background: #fff;
-        border: 1px solid #e1ebe4;
-        border-radius: 14px;
-        padding: 22px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 16px rgba(24, 75, 42, .05);
-    }
+        /* SIDEBAR LOGO */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
 
-    .archive-module-card {
-        display: block;
-        text-decoration: none;
-        color: #244633;
-        background: #fff;
-        border: 1px solid #dce9df;
-        border-radius: 12px;
-        padding: 16px;
-        height: 100%;
-        transition: .2s;
-    }
+        .sidebar-logo a {
+            display: block;
+        }
 
-    .archive-module-card:hover,
-    .archive-module-card.selected {
-        border-color: #198754;
-        background: #f0f9f2;
-        color: #17683a;
-    }
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
 
-    .archive-module-card strong {
-        display: block;
-        margin-bottom: 5px;
-    }
+        /* app-main opened in sidebar.php */
+        .app-main {
+            margin-left: 250px !important;
+            width: calc(100% - 250px) !important;
+            max-width: none !important;
+            min-width: 0;
+            min-height: 100vh;
+            padding: 16px 24px !important;
+            margin-top: 0 !important;
+            box-shadow: none !important;
+            overflow-x: hidden;
+        }
 
-    .archive-module-card small {
-        color: #6b7c70;
-    }
-
-    .archive-table-wrap {
-        overflow-x: auto;
-    }
-
-    .archive-table th {
-        background: #f0f7f2;
-        color: #244633;
-        white-space: nowrap;
-    }
-
-    .archive-table td {
-        vertical-align: middle;
-        max-width: 260px;
-        overflow-wrap: anywhere;
-    }
-
-    .archive-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
-        min-width: 190px;
-    }
-
-    .archive-actions .btn {
-        font-size: 13px;
-    }
-
-    .archive-empty {
-        background: #f7faf8;
-        border: 1px dashed #cbded0;
-        border-radius: 12px;
-        padding: 32px 18px;
-        text-align: center;
-        color: #61796a;
-    }
-
-    .archive-label {
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: .5px;
-        color: #6b7c70;
-        font-weight: 700;
-    }
-
-    @media (max-width: 576px) {
-        .archive-header,
-        .archive-panel {
-            padding: 16px;
+        .archive-header {
+            background: #edf8ef;
+            border: 1px solid #dcecdf;
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
         }
 
         .archive-header h1 {
-            font-size: 24px;
+            color: #17683a;
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 4px;
         }
-    }
-</style>
+
+        .archive-header p {
+            color: #61796a;
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .archive-panel {
+            background: #fff;
+            border: 1px solid #e3eee6;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 10px rgba(24, 75, 42, .04);
+        }
+
+        .archive-module-card {
+            display: block;
+            text-decoration: none;
+            color: #304b3b;
+            background: #fff;
+            border: 1px solid #dcecdf;
+            border-radius: 8px;
+            padding: 12px 14px;
+            height: 100%;
+            transition: .2s;
+        }
+
+        .archive-module-card:hover,
+        .archive-module-card.selected {
+            border-color: #198754;
+            background: #f0f9f2;
+            color: #17683a;
+        }
+
+        .archive-module-card strong {
+            display: block;
+            margin-bottom: 3px;
+            font-size: 14px;
+        }
+
+        .archive-module-card small {
+            color: #61796a;
+            font-size: 12px;
+        }
+
+        .archive-table-wrap {
+            overflow-x: auto;
+        }
+
+        .archive-table th {
+            background: #edf8ef;
+            color: #17683a;
+            white-space: nowrap;
+            font-size: 13px;
+            padding: 10px 14px;
+        }
+
+        .archive-table td {
+            vertical-align: middle;
+            max-width: 260px;
+            overflow-wrap: anywhere;
+            font-size: 13px;
+            padding: 10px 14px;
+        }
+
+        .archive-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            min-width: 170px;
+        }
+
+        .archive-actions .btn {
+            font-size: 12px;
+            padding: 4px 10px;
+        }
+
+        .archive-empty {
+            background: #f7faf8;
+            border: 1px dashed #cbded0;
+            border-radius: 10px;
+            padding: 24px 16px;
+            text-align: center;
+            color: #61796a;
+        }
+
+        .archive-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: #61796a;
+            font-weight: 700;
+        }
+
+        .sidebar-link.active {
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        @media (max-width: 760px) {
+            .app-main {
+                margin-left: 0 !important;
+                width: 100% !important;
+                padding: 10px !important;
+            }
+
+            .archive-header,
+            .archive-panel {
+                padding: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="archive-header d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
@@ -479,23 +528,23 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <p>Find, restore, and manage archived information.</p>
     </div>
 
-    <a href="dashboard.php" class="btn btn-outline-success">
+    <a href="dashboard.php" class="btn btn-outline-success btn-sm">
         ← Back to Dashboard
     </a>
 </div>
 
 <?php if ($success === 'restored'): ?>
-    <div class="alert alert-success">
+    <div class="alert alert-success py-2 px-3 mb-3 fs-6">
         Record restored successfully.
     </div>
 <?php elseif ($success === 'deleted'): ?>
-    <div class="alert alert-success">
+    <div class="alert alert-success py-2 px-3 mb-3 fs-6">
         Archived record permanently deleted.
     </div>
 <?php endif; ?>
 
 <?php if ($error !== ''): ?>
-    <div class="alert alert-danger">
+    <div class="alert alert-danger py-2 px-3 mb-3 fs-6">
         <?= archiveEscape($error) ?>
     </div>
 <?php endif; ?>
@@ -503,14 +552,14 @@ require_once __DIR__ . '/../includes/sidebar.php';
 <div class="archive-panel">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <div>
-            <h2 class="h5 mb-1">Choose a Module</h2>
+            <h2 class="h6 mb-1 text-success fw-bold">Choose a Module</h2>
             <p class="text-muted small mb-0">
                 Select a module to view its archived records.
             </p>
         </div>
     </div>
 
-    <div class="row g-3">
+    <div class="row g-2">
         <?php foreach ($modules as $key => $module): ?>
             <div class="col-12 col-sm-6 col-lg-4">
                 <a
@@ -534,7 +583,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
         <div>
             <div class="archive-label">Selected Module</div>
-            <h2 class="h4 mb-1">
+            <h2 class="h5 mb-1 text-success fw-bold">
                 <?= archiveEscape($modules[$selectedModule]['label']) ?>
             </h2>
             <p class="text-muted small mb-0">
@@ -552,12 +601,12 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 <input
                     type="search"
                     name="search"
-                    class="form-control"
+                    class="form-control form-control-sm"
                     placeholder="Search archived records"
                     value="<?= archiveEscape($_GET['search'] ?? '') ?>"
                     aria-label="Search archived records"
                 >
-                <button type="submit" class="btn btn-success">
+                <button type="submit" class="btn btn-success btn-sm">
                     Search
                 </button>
             </form>
@@ -566,7 +615,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
     <?php if (!$tableExists): ?>
 
-        <div class="alert alert-warning mb-0">
+        <div class="alert alert-warning py-2 px-3 mb-0 fs-6">
             <strong>Not configured yet.</strong>
             The database table
             <code><?= archiveEscape($table) ?></code>
@@ -576,7 +625,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
     <?php elseif (!$hasArchiveColumn): ?>
 
-        <div class="alert alert-warning mb-0">
+        <div class="alert alert-warning py-2 px-3 mb-0 fs-6">
             <strong>Archive column missing.</strong>
             The table
             <code><?= archiveEscape($table) ?></code>
@@ -587,16 +636,16 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <?php elseif (!$archivedRecords): ?>
 
         <div class="archive-empty">
-            <div class="mb-2" style="font-size: 32px;">🗃</div>
-            <h3 class="h5">No archived records found</h3>
-            <p class="mb-0">
+            <div class="mb-2" style="font-size: 28px;">🗃</div>
+            <h3 class="h6 fw-bold">No archived records found</h3>
+            <p class="mb-0 small text-muted">
                 Archived records from this module will appear here.
             </p>
         </div>
 
     <?php else: ?>
 
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
             <span class="text-muted small">
                 <?= count($archivedRecords) ?> archived record(s) found
                 (up to 500 loaded)
@@ -604,7 +653,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         </div>
 
         <div class="archive-table-wrap">
-            <table class="table table-bordered table-hover archive-table">
+            <table class="table table-bordered table-hover archive-table mb-0">
                 <thead>
                     <tr>
                         <?php foreach ($displayColumns as $column): ?>
@@ -665,7 +714,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                         <input type="hidden" name="record_id" value="<?= (int) $record['id'] ?>">
 
                                         <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            Permanently Delete
+                                            Delete
                                         </button>
                                     </form>
                                 </div>
@@ -679,6 +728,46 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <?php endif; ?>
 </div>
 
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+
+    if (!sidebar) {
+        return;
+    }
+
+    var oldTexts = ['home for the aged', 'care management system'];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
+
+<!-- sidebar.php already opened <main class="app-main">, close it here -->
 </main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>

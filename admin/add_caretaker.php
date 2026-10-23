@@ -1,4 +1,3 @@
- 
 <?php
 session_start();
 
@@ -156,7 +155,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $pdo->commit();
 
-                // Prevent resubmission and redirect to caretaker management.
                 header('Location: caretakers_staff.php?created=1');
                 exit;
             }
@@ -197,98 +195,109 @@ $selectedStatus = $_POST['status'] ?? 'Active';
             margin: 0;
             background: #f4f8f5;
             color: #304b3b;
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow-x: hidden;
         }
 
-        /*
-         * The sidebar is supplied by includes/sidebar.php.
-         * Keep the content beside it and use the full remaining width.
-         */
-       
-.form-card {
-    display: block;
-    width: 100%;
-    max-width: none;
-    margin: 0 0 20px;
-    position: static;
-    left: auto;
-    background: #ffffff;
-    border: 1px solid #e3eee6;
-    border-radius: 14px;
-    box-shadow: 0 4px 16px rgba(24, 75, 42, 0.05);
-    overflow: hidden;
-    box-sizing: border-box;
-}
+        /* SIDEBAR LOGO */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
 
+        .sidebar-logo a {
+            display: block;
+        }
 
-        /* Wide green heading, like the Add Health Record page. */
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
+
+        /* app-main is opened in sidebar.php */
+        .app-main {
+            margin-left: 250px !important;
+            width: calc(100% - 250px) !important;
+            max-width: none !important;
+            min-width: 0;
+            min-height: 100vh;
+            padding: 24px !important;
+            box-shadow: none !important;
+            overflow-x: hidden;
+        }
+
         .page-heading {
             width: 100%;
             background: #2d6042;
             color: #fff;
-            border-radius: 14px;
-            padding: 21px 22px;
-            margin: 0 0 22px;
+            border-radius: 12px;
+            padding: 18px 20px;
+            margin: 0 0 18px;
         }
 
         .page-heading h1 {
             color: #fff;
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 600;
-            margin: 0 0 6px;
+            margin: 0 0 4px;
         }
 
         .page-heading p {
             color: #fff;
             margin: 0;
+            font-size: 14px;
         }
 
-        /* Full-width white form panel. */
         .form-card {
             width: 100%;
             max-width: none;
             margin: 0 0 20px;
-            position: static;
             background: #fff;
             border: 1px solid #e3eee6;
-            border-radius: 14px;
+            border-radius: 12px;
             box-shadow: 0 4px 16px rgba(24, 75, 42, 0.05);
             overflow: hidden;
         }
 
         .card-body {
-            padding: 24px;
+            padding: 20px;
             background: #fff;
         }
 
-        /* Light-green section bars. */
         .section-title {
             width: 100%;
             color: #17683a;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
             background: #edf8ef;
-            border-left: 5px solid #28a745;
+            border-left: 4px solid #28a745;
             border-bottom: 1px solid #dcecdf;
-            padding: 12px 15px;
-            margin: 0 0 22px;
+            padding: 10px 14px;
+            margin: 0 0 16px;
         }
 
         .section-title:not(:first-child) {
-            margin-top: 27px;
+            margin-top: 20px;
         }
 
         .form-label {
             color: #17683a;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            font-size: 14px;
         }
 
         .form-control,
         .form-select {
             width: 100%;
-            min-height: 42px;
+            min-height: 38px;
+            padding: 6px 12px;
             border-color: #cedbd1;
+            font-size: 14px;
         }
 
         .form-control:focus,
@@ -298,15 +307,7 @@ $selectedStatus = $_POST['status'] ?? 'Active';
         }
 
         textarea.form-control {
-            min-height: 75px;
-        }
-
-        .password-group .form-control {
-            min-width: 0;
-        }
-
-        .password-group .btn {
-            min-width: 72px;
+            min-height: 65px;
         }
 
         .form-actions {
@@ -315,12 +316,12 @@ $selectedStatus = $_POST['status'] ?? 'Active';
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
-            margin-top: 24px;
+            margin-top: 20px;
         }
 
         .action-btn {
-            min-height: 40px;
-            padding: 8px 14px;
+            min-height: 38px;
+            padding: 6px 14px;
             border-radius: 6px;
             font-weight: 500;
             display: inline-flex;
@@ -328,6 +329,7 @@ $selectedStatus = $_POST['status'] ?? 'Active';
             justify-content: center;
             text-decoration: none;
             cursor: pointer;
+            font-size: 14px;
         }
 
         .btn-save {
@@ -355,26 +357,27 @@ $selectedStatus = $_POST['status'] ?? 'Active';
         }
 
         .form-alert {
-            margin-bottom: 18px;
+            margin-bottom: 14px;
         }
 
-        @media (max-width: 768px) {
-            .page-content {
-                margin-left: 0;
-                width: 100%;
-                padding: 16px 12px;
+        .sidebar-link.active {
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        @media (max-width: 760px) {
+            .app-main {
+                margin-left: 0 !important;
+                width: 100% !important;
+                padding: 14px 10px !important;
             }
 
             .page-heading {
-                padding: 18px;
-            }
-
-            .page-heading h1 {
-                font-size: 24px;
+                padding: 14px;
             }
 
             .card-body {
-                padding: 18px;
+                padding: 14px;
             }
 
             .form-actions {
@@ -391,239 +394,275 @@ $selectedStatus = $_POST['status'] ?? 'Active';
 
 <body>
 
-<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+<?php
+// sidebar.php opens <main class="app-main">
+require_once __DIR__ . '/../includes/sidebar.php';
+?>
 
-<main class="page-content">
+<header class="page-heading">
+    <h1>Add Caretaker</h1>
+    <p>Enter the caretaker's information below.</p>
+</header>
 
-    <header class="page-heading">
-        <h1>Add Caretaker</h1>
-        <p>Enter the caretaker's information below.</p>
-    </header>
+<?php if ($errors): ?>
+    <div class="alert alert-danger form-alert" role="alert">
+        <strong>Please correct the following:</strong>
+        <ul class="mb-0 mt-2">
+            <?php foreach ($errors as $error): ?>
+                <div><?= e($error) ?></div>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+<?php endif; ?>
 
-    <?php if ($errors): ?>
-        <div class="alert alert-danger form-alert" role="alert">
-            <strong>Please correct the following:</strong>
-            <ul class="mb-0 mt-2">
-                <?php foreach ($errors as $error): ?>
-                    <li><?= e($error) ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-    <?php endif; ?>
+<section class="form-card">
+    <div class="card-body">
 
-    <section class="form-card">
-        <div class="card-body">
+        <form method="POST" action="" autocomplete="off">
+            <input
+                type="hidden"
+                name="csrf_token"
+                value="<?= e($_SESSION['add_caretaker_csrf']) ?>"
+            >
 
-            <form method="POST" action="" autocomplete="off">
-                <input
-                    type="hidden"
-                    name="csrf_token"
-                    value="<?= e($_SESSION['add_caretaker_csrf']) ?>"
-                >
+            <h2 class="section-title">Personal Information</h2>
 
-                <h2 class="section-title">Personal Information</h2>
-
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="employee_id" class="form-label">
-                            Employee ID *
-                        </label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="employee_id"
-                            name="employee_id"
-                            value="<?= e($_POST['employee_id'] ?? '') ?>"
-                            required
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="first_name" class="form-label">
-                            First Name *
-                        </label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="first_name"
-                            name="first_name"
-                            value="<?= e($_POST['first_name'] ?? '') ?>"
-                            required
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="last_name" class="form-label">
-                            Last Name *
-                        </label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="last_name"
-                            name="last_name"
-                            value="<?= e($_POST['last_name'] ?? '') ?>"
-                            required
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="contact" class="form-label">
-                            Contact Number
-                        </label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="contact"
-                            name="contact"
-                            value="<?= e($_POST['contact'] ?? '') ?>"
-                        >
-                    </div>
-
-                    <div class="col-12">
-                        <label for="address" class="form-label">Address</label>
-                        <textarea
-                            class="form-control"
-                            id="address"
-                            name="address"
-                            rows="2"
-                        ><?= e($_POST['address'] ?? '') ?></textarea>
-                    </div>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label for="employee_id" class="form-label">
+                        Employee ID *
+                    </label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="employee_id"
+                        name="employee_id"
+                        value="<?= e($_POST['employee_id'] ?? '') ?>"
+                        required
+                    >
                 </div>
 
-                <h2 class="section-title">Employment Details</h2>
+                <div class="col-md-6">
+                    <label for="first_name" class="form-label">
+                        First Name *
+                    </label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="first_name"
+                        name="first_name"
+                        value="<?= e($_POST['first_name'] ?? '') ?>"
+                        required
+                    >
+                </div>
 
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label for="position" class="form-label">Position</label>
+                <div class="col-md-6">
+                    <label for="last_name" class="form-label">
+                        Last Name *
+                    </label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="last_name"
+                        name="last_name"
+                        value="<?= e($_POST['last_name'] ?? '') ?>"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label for="contact" class="form-label">
+                        Contact Number
+                    </label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="contact"
+                        name="contact"
+                        value="<?= e($_POST['contact'] ?? '') ?>"
+                    >
+                </div>
+
+                <div class="col-12">
+                    <label for="address" class="form-label">Address</label>
+                    <textarea
+                        class="form-control"
+                        id="address"
+                        name="address"
+                        rows="2"
+                    ><?= e($_POST['address'] ?? '') ?></textarea>
+                </div>
+            </div>
+
+            <h2 class="section-title">Employment Details</h2>
+
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label for="position" class="form-label">Position</label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="position"
+                        name="position"
+                        value="<?= e($_POST['position'] ?? 'Caretaker') ?>"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label for="shift" class="form-label">Shift</label>
+                    <select
+                        class="form-select"
+                        id="shift"
+                        name="shift"
+                        required
+                    >
+                        <?php foreach (['Morning', 'Afternoon', 'Night', 'Rotating'] as $option): ?>
+                            <option
+                                value="<?= e($option) ?>"
+                                <?= $selectedShift === $option ? 'selected' : '' ?>
+                            ><?= e($option) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label for="status" class="form-label">
+                        Employment Status
+                    </label>
+                    <select
+                        class="form-select"
+                        id="status"
+                        name="status"
+                        required
+                    >
+                        <?php foreach (['Active', 'On Leave', 'Inactive'] as $option): ?>
+                            <option
+                                value="<?= e($option) ?>"
+                                <?= $selectedStatus === $option ? 'selected' : '' ?>
+                            ><?= e($option) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <small class="text-muted">
+                        Only Active caretakers should be allowed to log in.
+                    </small>
+                </div>
+            </div>
+
+            <h2 class="section-title">Login Credentials</h2>
+
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label for="username" class="form-label">
+                        Username *
+                    </label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="username"
+                        name="username"
+                        value="<?= e($_POST['username'] ?? '') ?>"
+                        autocomplete="off"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-4">
+                    <label for="password" class="form-label">
+                        Password *
+                    </label>
+                    <div class="input-group password-group">
                         <input
-                            type="text"
+                            type="password"
                             class="form-control"
-                            id="position"
-                            name="position"
-                            value="<?= e($_POST['position'] ?? 'Caretaker') ?>"
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="shift" class="form-label">Shift</label>
-                        <select
-                            class="form-select"
-                            id="shift"
-                            name="shift"
+                            id="password"
+                            name="password"
+                            minlength="8"
+                            autocomplete="new-password"
                             required
                         >
-                            <?php foreach (['Morning', 'Afternoon', 'Night', 'Rotating'] as $option): ?>
-                                <option
-                                    value="<?= e($option) ?>"
-                                    <?= $selectedShift === $option ? 'selected' : '' ?>
-                                ><?= e($option) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <button
+                            class="btn btn-outline-secondary"
+                            type="button"
+                            onclick="togglePassword('password', this)"
+                            aria-label="Show or hide password"
+                        >Show</button>
                     </div>
-
-                    <div class="col-md-6">
-                        <label for="status" class="form-label">
-                            Employment Status
-                        </label>
-                        <select
-                            class="form-select"
-                            id="status"
-                            name="status"
-                            required
-                        >
-                            <?php foreach (['Active', 'On Leave', 'Inactive'] as $option): ?>
-                                <option
-                                    value="<?= e($option) ?>"
-                                    <?= $selectedStatus === $option ? 'selected' : '' ?>
-                                ><?= e($option) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <small class="text-muted">
-                            Only Active caretakers should be allowed to log in.
-                        </small>
-                    </div>
+                    <small class="text-muted">At least 8 characters.</small>
                 </div>
 
-                <h2 class="section-title">Login Credentials</h2>
-
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label for="username" class="form-label">
-                            Username *
-                        </label>
+                <div class="col-md-4">
+                    <label for="confirm_password" class="form-label">
+                        Confirm Password *
+                    </label>
+                    <div class="input-group password-group">
                         <input
-                            type="text"
+                            type="password"
                             class="form-control"
-                            id="username"
-                            name="username"
-                            value="<?= e($_POST['username'] ?? '') ?>"
-                            autocomplete="off"
+                            id="confirm_password"
+                            name="confirm_password"
+                            minlength="8"
+                            autocomplete="new-password"
                             required
                         >
-                    </div>
-
-                    <div class="col-md-4">
-                        <label for="password" class="form-label">
-                            Password *
-                        </label>
-                        <div class="input-group password-group">
-                            <input
-                                type="password"
-                                class="form-control"
-                                id="password"
-                                name="password"
-                                minlength="8"
-                                autocomplete="new-password"
-                                required
-                            >
-                            <button
-                                class="btn btn-outline-secondary"
-                                type="button"
-                                onclick="togglePassword('password', this)"
-                                aria-label="Show or hide password"
-                            >Show</button>
-                        </div>
-                        <small class="text-muted">At least 8 characters.</small>
-                    </div>
-
-                    <div class="col-md-4">
-                        <label for="confirm_password" class="form-label">
-                            Confirm Password *
-                        </label>
-                        <div class="input-group password-group">
-                            <input
-                                type="password"
-                                class="form-control"
-                                id="confirm_password"
-                                name="confirm_password"
-                                minlength="8"
-                                autocomplete="new-password"
-                                required
-                            >
-                            <button
-                                class="btn btn-outline-secondary"
-                                type="button"
-                                onclick="togglePassword('confirm_password', this)"
-                                aria-label="Show or hide confirmation password"
-                            >Show</button>
-                        </div>
+                        <button
+                            class="btn btn-outline-secondary"
+                            type="button"
+                            onclick="togglePassword('confirm_password', this)"
+                            aria-label="Show or hide confirmation password"
+                        >Show</button>
                     </div>
                 </div>
+            </div>
 
-                <div class="form-actions">
-                    <button type="submit" class="action-btn btn-save">
-                        Save Caretaker
-                    </button>
+            <div class="form-actions">
+                <button type="submit" class="action-btn btn-save">
+                    Save Caretaker
+                </button>
 
-                    <a href="caretakers_staff.php" class="action-btn btn-cancel">
-                        Cancel
-                    </a>
-                </div>
-            </form>
+                <a href="caretakers_staff.php" class="action-btn btn-cancel">
+                    Cancel
+                </a>
+            </div>
+        </form>
 
-        </div>
-    </section>
-</main>
+    </div>
+</section>
+
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+
+    if (!sidebar) {
+        return;
+    }
+
+    var oldTexts = ['home for the aged', 'care management system'];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
 
 <script>
 function togglePassword(fieldId, button) {
@@ -639,5 +678,7 @@ function togglePassword(fieldId, button) {
 }
 </script>
 
+<!-- sidebar.php already opened <main class="app-main">, close it here -->
+</main>
 </body>
 </html>

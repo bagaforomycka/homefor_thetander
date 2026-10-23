@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -240,9 +239,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     >
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             background: #f5f8f6;
             color: #24352b;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* SIDEBAR LOGO (injected at top of sidebar) */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
+
+        .sidebar-logo a {
+            display: block;
+        }
+
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
+
+        .app-main {
+            margin-left: 250px !important;
+            width: calc(100% - 250px) !important;
+            max-width: none !important;
+            min-width: 0;
+            min-height: 100vh;
+            padding: 28px !important;
+            box-shadow: none !important;
+            overflow-x: hidden;
         }
 
         .page-heading {
@@ -261,6 +296,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .form-label {
             font-weight: 600;
+        }
+
+        .sidebar-link.active {
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        @media (max-width: 760px) {
+            .app-main {
+                margin-left: 0 !important;
+                width: 100% !important;
+                padding: 18px 12px !important;
+            }
         }
     </style>
 </head>
@@ -481,6 +529,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </form>
 </div>
+
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+
+    if (!sidebar) {
+        return;
+    }
+
+    // Hide the old text title and subtitle
+    var oldTexts = ['home for the aged', 'care management system'];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    // Add the logo
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
 
 </main>
 </body>
