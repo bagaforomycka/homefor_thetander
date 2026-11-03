@@ -1,10 +1,4 @@
-
 <?php
-/**
- * Home for the Aged
- * Shared Sidebar for Admin and Caretaker
- * File: includes/sidebar.php
- */
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -71,10 +65,6 @@ if (!function_exists('sidebarLink')) {
             font-family: Arial, sans-serif;
         }
 
-        /* ==========================
-           MOBILE HEADER
-        ========================== */
-
         .mobile-navbar {
             display: none;
             align-items: center;
@@ -86,33 +76,21 @@ if (!function_exists('sidebarLink')) {
             z-index: 1050;
         }
 
-        /* ==========================
-           SHARED SIDEBAR
-           Identical for both roles
-        ========================== */
-
         .app-sidebar {
             position: fixed;
             top: 0;
             left: 0;
             bottom: 0;
-
             width: var(--sidebar-width);
             height: 100vh;
-
             overflow-y: auto;
             overflow-x: hidden;
-
             padding: 16px 12px;
-
             background: var(--sidebar-green);
             color: #ffffff;
-
             z-index: 1000;
-
             font-family: Arial, sans-serif;
             font-size: 14px;
-
             scrollbar-width: thin;
             scrollbar-color: #42654b var(--sidebar-green);
         }
@@ -121,8 +99,6 @@ if (!function_exists('sidebarLink')) {
         .app-sidebar * {
             box-sizing: border-box;
         }
-
-        /* BRAND */
 
         .sidebar-brand {
             margin: 3px 0 6px;
@@ -135,30 +111,21 @@ if (!function_exists('sidebarLink')) {
         .sidebar-subtitle {
             margin-bottom: 12px;
             padding-bottom: 11px;
-
             color: #ffffff;
             opacity: 0.85;
-
             font-size: 12px;
             line-height: 1.4;
-
             border-bottom: 1px solid var(--sidebar-divider);
         }
-
-        /* CATEGORY HEADINGS */
 
         .sidebar-section {
             margin: 14px 0 5px;
             padding: 12px 0 5px;
-
             border-top: 1px solid var(--sidebar-divider);
-
             color: var(--sidebar-heading);
-
             font-size: 11px;
             font-weight: 700;
             line-height: 1.4;
-
             text-transform: uppercase;
             letter-spacing: 0.35px;
         }
@@ -168,27 +135,19 @@ if (!function_exists('sidebarLink')) {
             padding-top: 0;
         }
 
-        /* NAVIGATION LINKS */
-
         .sidebar-link {
             display: flex;
             align-items: center;
-
             width: 100%;
             min-height: 42px;
-
             margin-bottom: 3px;
             padding: 11px 9px;
-
             border-radius: 8px;
-
             color: #ffffff;
             text-decoration: none;
-
             font-size: 14px;
             font-weight: 400;
             line-height: 1.4;
-
             transition: background-color 0.2s ease;
         }
 
@@ -208,8 +167,6 @@ if (!function_exists('sidebarLink')) {
             color: #ffffff;
             font-weight: 600;
         }
-
-        /* ACCOUNT */
 
         .sidebar-account {
             margin-top: 18px;
@@ -231,20 +188,12 @@ if (!function_exists('sidebarLink')) {
             font-size: 11px;
         }
 
-        /* ==========================
-           MAIN CONTENT
-        ========================== */
-
         .app-main {
             width: calc(100% - var(--sidebar-width));
             min-height: 100vh;
             margin-left: var(--sidebar-width);
             padding: 28px;
         }
-
-        /* ==========================
-           RESPONSIVE LAYOUT
-        ========================== */
 
         @media (max-width: 991.98px) {
             .mobile-navbar {
@@ -256,11 +205,9 @@ if (!function_exists('sidebarLink')) {
                 top: auto;
                 left: auto;
                 bottom: auto;
-
                 width: 100%;
                 height: auto;
                 max-height: none;
-
                 padding: 16px;
             }
 
@@ -275,7 +222,6 @@ if (!function_exists('sidebarLink')) {
 
 <body>
 
-<!-- MOBILE HEADER -->
 <header class="mobile-navbar">
     <div>
         <div class="fw-bold text-white">
@@ -300,12 +246,10 @@ if (!function_exists('sidebarLink')) {
     </button>
 </header>
 
-<!-- SIDEBAR -->
 <div class="collapse d-lg-block" id="sidebarMobileCollapse">
 
     <aside class="app-sidebar">
 
-        <!-- BRAND -->
         <div class="d-none d-lg-block">
             <div class="sidebar-brand">
                 Home for the Aged
@@ -317,10 +261,6 @@ if (!function_exists('sidebarLink')) {
         </div>
 
         <?php if ($currentRole === 'admin'): ?>
-
-            <!-- ==========================
-                 ADMIN NAVIGATION
-            =========================== -->
 
             <div class="sidebar-section">Main Menu</div>
 
@@ -430,108 +370,100 @@ if (!function_exists('sidebarLink')) {
             );
             ?>
 
-       
-<?php elseif ($currentRole === 'caretaker'): ?>
+        <?php elseif ($currentRole === 'caretaker'): ?>
 
-    <!-- MY CARE -->
-    <div class="sidebar-section">My Care</div>
+            <div class="sidebar-section">My Care</div>
 
-    <?php
-    sidebarLink(
-        '/homefor_thetander/caretaker/dashboard.php',
-        'Dashboard',
-        'dashboard.php',
-        $currentPage
-    );
+            <?php
+            sidebarLink(
+                '/homefor_thetander/caretaker/dashboard.php',
+                'Dashboard',
+                'dashboard.php',
+                $currentPage
+            );
 
-    sidebarLink(
-        '/homefor_thetander/caretaker/my_residents.php',
-        'My Residents',
-        'my_residents.php',
-        $currentPage
-    );
+            sidebarLink(
+                '/homefor_thetander/caretaker/myresidents.php',
+                'My Residents',
+                'myresidents.php',
+                $currentPage
+            );
 
-    sidebarLink(
-        '/homefor_thetander/caretaker/care_tasks.php',
-        'Care Tasks',
-        'care_tasks.php',
-        $currentPage
-    );
+            sidebarLink(
+                '/homefor_thetander/caretaker/care_tasks.php',
+                'Care Tasks',
+                'care_tasks.php',
+                $currentPage
+            );
 
-    sidebarLink(
-        '/homefor_thetander/caretaker/my_schedule.php',
-        'My Schedule',
-        'my_schedule.php',
-        $currentPage
-    );
-    ?>
+            sidebarLink(
+                '/homefor_thetander/caretaker/my_schedule.php',
+                'My Schedule',
+                'my_schedule.php',
+                $currentPage
+            );
+            ?>
 
-    <!-- RESIDENT INFORMATION -->
-    <div class="sidebar-section">Resident Information</div>
+            <div class="sidebar-section">Resident Information</div>
 
-    <?php
-    sidebarLink(
-        '/homefor_thetander/caretaker/health_information.php',
-        'Health Information',
-        'health_information.php',
-        $currentPage
-    );
-    ?>
+            <?php
+            sidebarLink(
+                '/homefor_thetander/caretaker/health_information.php',
+                'Health Information',
+                'health_information.php',
+                $currentPage
+            );
+            ?>
 
-    <!-- COMMUNICATION -->
-    <div class="sidebar-section">Communication</div>
+            <div class="sidebar-section">Communication</div>
 
-    <?php
-    sidebarLink(
-        '/homefor_thetander/caretaker/messages.php',
-        'Messages',
-        'messages.php',
-        $currentPage
-    );
+            <?php
+            sidebarLink(
+                '/homefor_thetander/caretaker/messages.php',
+                'Messages',
+                'messages.php',
+                $currentPage
+            );
 
-    sidebarLink(
-        '/homefor_thetander/caretaker/announcements.php',
-        'Announcements',
-        'announcements.php',
-        $currentPage
-    );
-    ?>
+            sidebarLink(
+                '/homefor_thetander/caretaker/announcements.php',
+                'Announcements',
+                'announcements.php',
+                $currentPage
+            );
+            ?>
 
-    <!-- DOCUMENTATION -->
-    <div class="sidebar-section">Documentation</div>
+            <div class="sidebar-section">Documentation</div>
 
-    <?php
-    sidebarLink(
-        '/homefor_thetander/caretaker/care_reports.php',
-        'Care Reports',
-        'care_reports.php',
-        $currentPage
-    );
+            <?php
+            sidebarLink(
+                '/homefor_thetander/caretaker/care_reports.php',
+                'Care Reports',
+                'care_reports.php',
+                $currentPage
+            );
 
-    sidebarLink(
-        '/homefor_thetander/caretaker/incident_reports.php',
-        'Incident Reports',
-        'incident_reports.php',
-        $currentPage
-    );
-    ?>
+            sidebarLink(
+                '/homefor_thetander/caretaker/incident_reports.php',
+                'Incident Reports',
+                'incident_reports.php',
+                $currentPage
+            );
+            ?>
 
-    <!-- SYSTEM -->
-    <div class="sidebar-section">System</div>
+            <div class="sidebar-section">System</div>
 
-    <?php
-    sidebarLink(
-        '/homefor_thetander/caretaker/profile.php',
-        'My Profile',
-        'profile.php',
-        $currentPage
-    );
-    ?>
+            <?php
+            sidebarLink(
+                '/homefor_thetander/caretaker/profile.php',
+                'My Profile',
+                'profile.php',
+                $currentPage
+            );
+            ?>
 
-<?php endif; ?>
+        <?php endif; ?>
 
-
-        <!-- ACCOUNT -->
         <div class="sidebar-account">
 
             <div class="sidebar-user">
@@ -567,7 +499,6 @@ if (!function_exists('sidebarLink')) {
 
 </div>
 
-<!-- MAIN CONTENT STARTS HERE -->
 <main class="app-main">
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

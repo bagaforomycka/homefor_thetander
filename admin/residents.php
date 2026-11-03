@@ -1,3 +1,4 @@
+
 <?php
 session_start();
 
@@ -27,15 +28,30 @@ $search = trim($_GET['search'] ?? '');
 $statusFilter = $_GET['status'] ?? 'all';
 $success = $_GET['success'] ?? '';
 $error = '';
+$residents = [];
+$hasArchivedAt = false;
 
-/* Delete means archive; never permanently delete a resident here. */
+try {
+    // Check whether archived_at exists in the residents table.
+    $columnCheck = $pdo->query("SHOW COLUMNS FROM residents");
+    $columns = $columnCheck->fetchAll(PDO::FETCH_COLUMN);
+
+    $hasArchivedAt = in_array('archived_at', $columns, true);
+
+} catch (PDOException $e) {
+    error_log('Resident column check error: ' . $e->getMessage());
+    $error = 'Unable to check the residents database table.';
+}
+
+/* Archive resident instead of permanently deleting. */
 if (
+    !$error &&
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
     ($_POST['action'] ?? '') === 'delete'
 ) {
     if (!$isAdmin) {
         http_response_code(403);
-        exit('Only an administrator can delete residents.');
+        exit('Only an administrator can archive residents.');
     }
 
     $postedToken = $_POST['csrf_token'] ?? '';
@@ -58,12 +74,22 @@ if (
         $error = 'Invalid resident selected.';
     } else {
         try {
-            $stmt = $pdo->prepare("
-                UPDATE residents
-                SET archived_at = NOW()
-                WHERE id = :id
-                  AND archived_at IS NULL
-            ");
+            if ($hasArchivedAt) {
+                $stmt = $pdo->prepare("
+                    UPDATE residents
+                    SET archived_at = NOW(),
+                        status = 'archived'
+                    WHERE id = :id
+                      AND archived_at IS NULL
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    UPDATE residents
+                    SET status = 'archived'
+                    WHERE id = :id
+                      AND (status IS NULL OR status <> 'archived')
+                ");
+            }
 
             $stmt->execute(['id' => $residentId]);
 
@@ -73,81 +99,91 @@ if (
             }
 
             $error = 'Resident not found or already archived.';
+
         } catch (PDOException $e) {
             error_log('Resident archive error: ' . $e->getMessage());
-            $error = 'Unable to delete this resident. Please try again.';
+            $error = 'Unable to archive this resident. Please try again.';
         }
     }
 }
 
-/* Only display active residents. */
-$sql = "
-    SELECT
-        id,
-        resident_id,
-        first_name,
-        middle_name,
-        last_name,
-        date_of_birth,
-        gender,
-        contact_number,
-        address,
-        room_number,
-        admission_date,
-        care_level,
-        assigned_caretaker,
-        status,
-        created_at
-    FROM residents
-    WHERE archived_at IS NULL
-";
+/* Load residents and their assigned caretaker names. */
+if (!$error) {
+    $sql = "
+        SELECT
+            r.id,
+            r.resident_id,
+            r.first_name,
+            r.middle_name,
+            r.last_name,
+            r.date_of_birth,
+            r.gender,
+            r.contact_number,
+            r.address,
+            r.room_number,
+            r.admission_date,
+            r.care_level,
+            r.assigned_caretaker,
+            r.status,
+            u.full_name AS caretaker_name
+        FROM residents r
+        LEFT JOIN users u
+            ON u.id = r.assigned_caretaker
+        WHERE 1 = 1
+    ";
 
-$params = [];
+    $params = [];
 
-if ($search !== '') {
-    $sql .= " AND (
-        resident_id LIKE :resident_id
-        OR first_name LIKE :first_name
-        OR middle_name LIKE :middle_name
-        OR last_name LIKE :last_name
-        OR room_number LIKE :room_number
-        OR assigned_caretaker LIKE :caretaker
-    )";
+    if ($hasArchivedAt) {
+        $sql .= " AND r.archived_at IS NULL";
+    } elseif ($statusFilter !== 'archived') {
+        $sql .= " AND (r.status IS NULL OR r.status <> 'archived')";
+    }
 
-    $term = '%' . $search . '%';
+    if ($search !== '') {
+        $sql .= " AND (
+            r.resident_id LIKE :resident_id
+            OR r.first_name LIKE :first_name
+            OR r.middle_name LIKE :middle_name
+            OR r.last_name LIKE :last_name
+            OR r.room_number LIKE :room_number
+            OR u.full_name LIKE :caretaker
+        )";
 
-    $params = [
-        'resident_id' => $term,
-        'first_name' => $term,
-        'middle_name' => $term,
-        'last_name' => $term,
-        'room_number' => $term,
-        'caretaker' => $term
-    ];
-}
+        $term = '%' . $search . '%';
 
-if ($statusFilter !== 'all' && $statusFilter !== '') {
-    $sql .= ' AND status = :status';
-    $params['status'] = $statusFilter;
-}
+        $params = [
+            'resident_id' => $term,
+            'first_name' => $term,
+            'middle_name' => $term,
+            'last_name' => $term,
+            'room_number' => $term,
+            'caretaker' => $term
+        ];
+    }
 
-$sql .= ' ORDER BY id DESC';
+    if ($statusFilter !== 'all' && $statusFilter !== '') {
+        $sql .= " AND LOWER(r.status) = :status";
+        $params['status'] = strtolower($statusFilter);
+    }
 
-try {
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $residents = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    error_log('Resident loading error: ' . $e->getMessage());
-    $residents = [];
-    $error = 'Unable to load residents. Please check your database tables.';
+    $sql .= " ORDER BY r.id DESC";
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $residents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    } catch (PDOException $e) {
+        error_log('Resident loading error: ' . $e->getMessage());
+        $error = 'Unable to load residents. Please check the database structure.';
+    }
 }
 
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 
 <style>
-/* SIDEBAR LOGO (injected at top of sidebar) */
 .sidebar-logo {
     display: block;
     padding: 10px 4px 6px;
@@ -239,6 +275,17 @@ require_once __DIR__ . '/../includes/sidebar.php';
     color: #17683a;
 }
 
+.resident-status.needs_attention {
+    background: #fff1d6;
+    color: #916000;
+}
+
+.resident-status.discharged,
+.resident-status.archived {
+    background: #edf0f2;
+    color: #58636b;
+}
+
 .resident-actions {
     display: flex;
     justify-content: flex-end;
@@ -316,7 +363,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="alert alert-success">Resident updated successfully.</div>
 <?php elseif ($success === 'deleted'): ?>
     <div class="alert alert-success">
-        Resident deleted successfully and moved to Archive &amp; Restore.
+        Resident archived successfully.
     </div>
 <?php endif; ?>
 
@@ -338,18 +385,30 @@ require_once __DIR__ . '/../includes/sidebar.php';
         >
 
         <select name="status" class="form-select"
-                style="width:auto;min-width:160px">
+                style="width:auto;min-width:170px">
+
             <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>
                 All statuses
             </option>
-            <option value="Active" <?= $statusFilter === 'Active' ? 'selected' : '' ?>>
+
+            <option value="new" <?= $statusFilter === 'new' ? 'selected' : '' ?>>
+                New
+            </option>
+
+            <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>
                 Active
             </option>
-            <option value="Inactive" <?= $statusFilter === 'Inactive' ? 'selected' : '' ?>>
-                Inactive
+
+            <option value="needs_attention" <?= $statusFilter === 'needs_attention' ? 'selected' : '' ?>>
+                Needs Attention
             </option>
-            <option value="Discharged" <?= $statusFilter === 'Discharged' ? 'selected' : '' ?>>
+
+            <option value="discharged" <?= $statusFilter === 'discharged' ? 'selected' : '' ?>>
                 Discharged
+            </option>
+
+            <option value="archived" <?= $statusFilter === 'archived' ? 'selected' : '' ?>>
+                Archived
             </option>
         </select>
 
@@ -364,28 +423,45 @@ require_once __DIR__ . '/../includes/sidebar.php';
 </div>
 
 <div class="residents-panel">
+
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h2 class="h5 mb-0">Resident List</h2>
-        <span class="text-secondary"><?= count($residents) ?> resident(s)</span>
+        <span class="text-secondary">
+            <?= count($residents) ?> resident(s)
+        </span>
     </div>
 
-    <?php if (empty($residents)): ?>
-        <div class="alert alert-info mb-0">
-            No active residents found. Add a resident or change your search.
+    <?php if ($error !== ''): ?>
+
+        <div class="alert alert-warning mb-0">
+            Residents could not be displayed because of a database error.
         </div>
+
+    <?php elseif (empty($residents)): ?>
+
+        <div class="alert alert-info mb-0">
+            No residents found. Add a resident or change your search.
+        </div>
+
     <?php else: ?>
 
         <?php foreach ($residents as $resident): ?>
+
             <?php
             $fullName = trim(
                 ($resident['first_name'] ?? '') . ' ' .
                 ($resident['middle_name'] ?? '') . ' ' .
                 ($resident['last_name'] ?? '')
             );
+
             $fullName = preg_replace('/\s+/', ' ', $fullName);
+
+            $status = strtolower($resident['status'] ?? '');
+            $statusLabel = ucwords(str_replace('_', ' ', $status));
             ?>
 
             <div class="resident-card">
+
                 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                     <div>
                         <h3><?= h($fullName) ?></h3>
@@ -399,12 +475,13 @@ require_once __DIR__ . '/../includes/sidebar.php';
                         </div>
                     </div>
 
-                    <span class="resident-status">
-                        <?= h($resident['status'] ?: 'Unspecified') ?>
+                    <span class="resident-status <?= h($status) ?>">
+                        <?= h($statusLabel ?: 'Unspecified') ?>
                     </span>
                 </div>
 
                 <div class="row g-2 mt-2">
+
                     <div class="col-md-6">
                         <div class="resident-detail">
                             <strong>Date of Birth:</strong>
@@ -436,7 +513,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     <div class="col-md-6">
                         <div class="resident-detail">
                             <strong>Assigned Caretaker:</strong>
-                            <?= h($resident['assigned_caretaker'] ?: 'Not assigned') ?>
+                            <?= h($resident['caretaker_name'] ?: 'Not assigned') ?>
                         </div>
                     </div>
 
@@ -446,9 +523,11 @@ require_once __DIR__ . '/../includes/sidebar.php';
                             <?= h($resident['address'] ?: 'Not provided') ?>
                         </div>
                     </div>
+
                 </div>
 
                 <div class="resident-actions">
+
                     <a
                         href="view_resident.php?id=<?= (int)$resident['id'] ?>"
                         class="btn btn-resident-view"
@@ -460,14 +539,21 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     >Edit</a>
 
                     <?php if ($isAdmin): ?>
+
                         <form
                             method="POST"
                             action="residents.php"
                             class="d-inline"
-                            onsubmit="return confirm('Delete this resident? The resident will be moved to Archive & Restore, where you can restore the record later.');"
+                            onsubmit="return confirm('Archive this resident? You can restore the record later if your archive module supports it.');"
                         >
                             <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="csrf_token" value="<?= h($csrf) ?>">
+
+                            <input
+                                type="hidden"
+                                name="csrf_token"
+                                value="<?= h($csrf) ?>"
+                            >
+
                             <input
                                 type="hidden"
                                 name="resident_id"
@@ -478,27 +564,31 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                 Delete
                             </button>
                         </form>
+
                     <?php endif; ?>
+
                 </div>
+
             </div>
+
         <?php endforeach; ?>
 
     <?php endif; ?>
+
 </div>
 
-<!-- Puts the logo at the top of the sidebar and hides the old text title -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var sidebar = document.querySelector(
-        '.sidebar, #sidebar, .sidebar-container, aside, nav'
-    );
+    var sidebar = document.querySelector('.app-sidebar');
 
     if (!sidebar) {
         return;
     }
 
-    // Hide the old text title and subtitle
-    var oldTexts = ['home for the aged', 'care management system'];
+    var oldTexts = [
+        'home for the aged',
+        'care management system'
+    ];
 
     sidebar.querySelectorAll('*').forEach(function (el) {
         if (
@@ -509,14 +599,14 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Add the logo
     if (!sidebar.querySelector('.sidebar-logo')) {
         var logo = document.createElement('div');
         logo.className = 'sidebar-logo';
+
         logo.innerHTML =
-            '<a href="dashboard.php">' +
-            '<img src="../images/white1.png" ' +
-            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged">' +
             '</a>';
 
         sidebar.insertBefore(logo, sidebar.firstChild);
