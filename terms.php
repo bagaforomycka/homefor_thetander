@@ -86,12 +86,13 @@
             font-weight: 700;
         }
 
-        .terms-card {
-            background: white;
+       .terms-card {
+            background: rgba(255, 255, 255, 0.65); /* Lower number = more transparent (try 0.60 to 0.70) */
+            backdrop-filter: blur(10px); /* Increases the frosted-glass blur effect to keep text sharp */
             padding: 35px;
-            border: 1px solid #e1eee3;
+            border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 16px;
-            box-shadow: 0 8px 28px rgba(28,90,48,.08);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
         }
 
         .terms-card h2 {
@@ -103,7 +104,7 @@
 
         .terms-card p {
             line-height: 1.8;
-            color: #52695a;
+            color: #123b20;
         }
 
         footer {
@@ -251,8 +252,8 @@
     <div class="container text-center">
         <strong>⌂♡ Home for the Aged</strong>
         <p class="mb-2 mt-2">Care · Comfort · Dignity</p>
-        <a href="index.php#login">Back to Login</a>
-        <span class="mx-2">|</span>
+       
+        <span class="mx-2"></span>
         <span>© <?= date('Y') ?> Home for the Aged</span>
     </div>
 </footer>
