@@ -1,3 +1,4 @@
+
 <?php
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -60,7 +61,13 @@ if (!function_exists('sidebarLink')) {
 
         body {
             margin: 0;
-            background: var(--page-bg);
+            background:
+                linear-gradient(
+                    rgba(255, 255, 255, 0.65),
+                    rgba(255, 255, 255, 0.65)
+                ),
+                url('/homefor_thetander/assets/images/aged-care-background.jpg')
+                center center / cover no-repeat fixed;
             color: #080c09;
             font-family: Arial, sans-serif;
         }
@@ -502,3 +509,5 @@ if (!function_exists('sidebarLink')) {
 <main class="app-main">
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
