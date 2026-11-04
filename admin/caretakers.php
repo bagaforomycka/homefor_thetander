@@ -24,7 +24,7 @@ $search = trim($_GET['search'] ?? '');
 $status = trim($_GET['status'] ?? '');
 $errorMsg = '';
 
-/* Archive caretaker using POST, not a GET delete link. */
+/* Archive caretaker using POST */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archive') {
     $token = $_POST['csrf_token'] ?? '';
     $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
@@ -44,25 +44,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archi
             $stmt->execute(['id' => $id]);
 
             if ($stmt->rowCount() > 0) {
-                header('Location: caretakers_staff.php?msg=archived');
+                header('Location: caretakers.php?msg=archived');
                 exit;
             }
 
             $errorMsg = 'Caretaker not found or already archived.';
         } catch (PDOException $e) {
             error_log('Caretaker archive error: ' . $e->getMessage());
-            $errorMsg = 'Could not archive this caretaker. Check the database table and archived_at column.';
+            $errorMsg = 'Could not archive this caretaker.';
         }
     }
 }
 
-/* Show active caretakers only. */
+/* Fetch active caretakers (using DISTINCT to prevent accidental row duplication) */
 $records = [];
 
 try {
-    $sql = 'SELECT *
-            FROM caretakers
-            WHERE archived_at IS NULL';
+    $sql = 'SELECT DISTINCT * FROM caretakers WHERE archived_at IS NULL';
     $params = [];
 
     if ($search !== '') {
@@ -83,7 +81,7 @@ try {
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     error_log('Caretaker list error: ' . $e->getMessage());
-    $errorMsg = 'Could not load caretakers. Check that the caretakers table has an archived_at column.';
+    $errorMsg = 'Could not load caretakers database table.';
 }
 ?>
 <!DOCTYPE html>
@@ -100,65 +98,38 @@ try {
             --pale-green: #edf7ef;
             --text: #304b3b;
         }
-
         body {
             background: #f8fbf8;
             color: var(--text);
             font-family: Arial, sans-serif;
             overflow-x: hidden;
         }
-
-        /* SIDEBAR LOGO (injected at top of sidebar) */
-        .sidebar-logo {
-            display: block;
-            padding: 10px 4px 6px;
-        }
-
-        .sidebar-logo a {
-            display: block;
-        }
-
-        .sidebar-logo img {
-            display: block;
-            width: 100%;
-            max-width: 300px;
-            height: auto;
-            margin: 0 auto;
-            transform: scale(1.1);
-        }
-
         .main-content {
             margin-left: 10px;
             padding: 24px 32px 32px 24px;
         }
-
         .card {
             border: none;
             border-radius: 10px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
         }
-
         .btn-success {
             background: var(--green);
             border-color: var(--green);
         }
-
         .btn-success:hover {
             background: #0f4b2a;
             border-color: #0f4b2a;
         }
-
         .table thead th {
             background: var(--pale-green);
             color: var(--text);
             white-space: nowrap;
         }
-
         .table th, .table td {
             padding: 12px 14px;
             vertical-align: middle;
         }
-
         @media (max-width: 768px) {
             .main-content {
                 padding: 18px 12px;
@@ -184,7 +155,7 @@ try {
 
     <?php if (($_GET['msg'] ?? '') === 'archived'): ?>
         <div class="alert alert-success">
-            Caretaker archived successfully. You can restore the record from Archive &amp; Restore.
+            Caretaker archived successfully.
         </div>
     <?php endif; ?>
 
@@ -218,7 +189,7 @@ try {
 
             <div class="col-md-3 d-flex gap-2">
                 <button type="submit" class="btn btn-success flex-fill">Search</button>
-                <a href="caretakers_staff.php" class="btn btn-outline-secondary">Reset</a>
+                <a href="caretakers.php" class="btn btn-outline-secondary">Reset</a>
             </div>
         </form>
     </div>
@@ -246,7 +217,7 @@ try {
                 <?php if (!$records): ?>
                     <tr>
                         <td colspan="7" class="text-center text-muted py-4">
-                            No active caretakers found.
+                            No active caretakers found matching your criteria.
                         </td>
                     </tr>
                 <?php else: ?>
@@ -270,17 +241,17 @@ try {
                             <td>
                                 <div class="d-flex gap-1 flex-wrap">
                                     <a
-                                        href="view_profile_cs.php?tab=caretakers&amp;id=<?= (int)$row['id'] ?>"
+                                        href="view_profile_cs.php?id=<?= (int)$row['id'] ?>"
                                         class="btn btn-sm btn-outline-info"
                                     >View</a>
 
                                     <a
-                                        href="edit_profile_cs.php?tab=caretakers&amp;id=<?= (int)$row['id'] ?>"
+                                        href="edit_profile_cs.php?id=<?= (int)$row['id'] ?>"
                                         class="btn btn-sm btn-outline-primary"
                                     >Edit</a>
 
                                     <form method="POST" class="d-inline"
-                                          onsubmit="return confirm('Archive this caretaker? The record will be moved to Archive & Restore and will no longer appear in this list.');">
+                                          onsubmit="return confirm('Archive this caretaker?');">
                                         <input type="hidden" name="csrf_token" value="<?= e($_SESSION['caretakers_csrf']) ?>">
                                         <input type="hidden" name="action" value="archive">
                                         <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
@@ -300,44 +271,5 @@ try {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- Puts the logo at the top of the sidebar and hides the old text title -->
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var sidebar = document.querySelector(
-        '.sidebar, #sidebar, .sidebar-container, aside, nav'
-    );
-
-    if (!sidebar) {
-        return;
-    }
-
-    // Hide the old text title and subtitle
-    var oldTexts = ['home for the aged', 'care management system'];
-
-    sidebar.querySelectorAll('*').forEach(function (el) {
-        if (
-            el.children.length === 0 &&
-            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-        ) {
-            el.style.display = 'none';
-        }
-    });
-
-    // Add the logo
-    if (!sidebar.querySelector('.sidebar-logo')) {
-        var logo = document.createElement('div');
-        logo.className = 'sidebar-logo';
-        logo.innerHTML =
-            '<a href="dashboard.php">' +
-            '<img src="../images/white1.png" ' +
-            'alt="Home for the Aged - Care, Comfort, Dignity">' +
-            '</a>';
-
-        sidebar.insertBefore(logo, sidebar.firstChild);
-    }
-});
-</script>
-
 </body>
 </html>

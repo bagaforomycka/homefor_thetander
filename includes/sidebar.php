@@ -338,7 +338,7 @@ if (!function_exists('sidebarLink')) {
 
             <?php
             sidebarLink(
-                '/homefor_thetander/admin/caretakers_staff.php',
+                '/homefor_thetander/admin/caretakers.php',
                 'Caretakers',
                 'caretakers_staff.php',
                 $currentPage

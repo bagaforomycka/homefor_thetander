@@ -15,29 +15,36 @@ function e($value): string {
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$tab = $_GET['tab'] ?? 'caretakers';
-$id = $_GET['id'] ?? null;
+$idParam = trim($_GET['id'] ?? '');
 
-if (!$id || !in_array($tab, ['caretakers', 'staff'], true)) {
-    header("Location: caretakers_staff.php");
+if ($idParam === '') {
+    header("Location: caretakers.php");
     exit;
 }
 
 $errors = [];
 $success = '';
 
-// Fetch existing record
+// Fetch existing caretaker record using smart fallback lookup
 $record = null;
 try {
-    $stmt = $pdo->prepare("SELECT * FROM {$tab} WHERE id = ?");
-    $stmt->execute([$id]);
-    $record = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (is_numeric($idParam)) {
+        $stmt = $pdo->prepare("SELECT * FROM caretakers WHERE id = ? AND archived_at IS NULL");
+        $stmt->execute([(int)$idParam]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    if (!$record) {
+        $stmt = $pdo->prepare("SELECT * FROM caretakers WHERE employee_id = ? AND archived_at IS NULL");
+        $stmt->execute([$idParam]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
 } catch (PDOException $e) {
     $record = null;
 }
 
 if (!$record) {
-    die("Record not found.");
+    die("Caretaker record not found or has been archived.");
 }
 
 // Handle Form Submission for Updates
@@ -48,7 +55,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $contact = trim($_POST['contact'] ?? '');
     $address = trim($_POST['address'] ?? '');
     $position = trim($_POST['position'] ?? '');
-    $department = trim($_POST['department'] ?? ''); // Only used if staff
     $shift = trim($_POST['shift'] ?? 'Morning');
     $status = trim($_POST['status'] ?? 'Active');
     $username = trim($_POST['username'] ?? '');
@@ -62,19 +68,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $full_name = $first_name . ' ' . $last_name;
 
-            if ($tab === 'staff') {
-                $sql = "UPDATE staff SET employee_id = ?, full_name = ?, contact = ?, address = ?, position = ?, department = ?, shift = ?, status = ?, username = ? WHERE id = ?";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([$employee_id, $full_name, $contact, $address, $position, $department, $shift, $status, $username, $id]);
-            } else {
-                $sql = "UPDATE caretakers SET employee_id = ?, full_name = ?, contact = ?, address = ?, position = ?, shift = ?, status = ?, username = ? WHERE id = ?";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([$employee_id, $full_name, $contact, $address, $position, $shift, $status, $username, $id]);
-            }
+            $sql = "UPDATE caretakers SET employee_id = ?, full_name = ?, contact = ?, address = ?, position = ?, shift = ?, status = ?, username = ? WHERE id = ?";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$employee_id, $full_name, $contact, $address, $position, $shift, $status, $username, $record['id']]);
 
             // Refresh record data after update
-            $stmt = $pdo->prepare("SELECT * FROM {$tab} WHERE id = ?");
-            $stmt->execute([$id]);
+            $stmt = $pdo->prepare("SELECT * FROM caretakers WHERE id = ?");
+            $stmt->execute([$record['id']]);
             $record = $stmt->fetch(PDO::FETCH_ASSOC);
 
             $success = 'Profile successfully updated!';
@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Split full_name back into first and last name for the form fields
-$nameParts = explode(' ', $record['full_name'], 2);
+$nameParts = explode(' ', $record['full_name'] ?? '', 2);
 $firstNameVal = $nameParts[0] ?? '';
 $lastNameVal = $nameParts[1] ?? '';
 ?>
@@ -94,7 +94,7 @@ $lastNameVal = $nameParts[1] ?? '';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Profile | Home for the Aged</title>
+    <title>Edit Caretaker Profile | Home for the Aged</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -150,7 +150,7 @@ $lastNameVal = $nameParts[1] ?? '';
             <div class="col-xl-10">
                 
                 <div class="mb-3">
-                    <a href="caretakers_staff.php?tab=<?= e($tab) ?>" class="btn btn-outline-success">&larr; Back to List</a>
+                    <a href="caretakers.php" class="btn btn-outline-success">&larr; Back to List</a>
                 </div>
 
                 <?php if (!empty($errors)): ?>
@@ -171,7 +171,7 @@ $lastNameVal = $nameParts[1] ?? '';
 
                 <div class="card shadow">
                     <div class="card-header">
-                        <h4 class="mb-0">Edit <?= ucfirst(e($tab)) ?> Profile</h4>
+                        <h4 class="mb-0">Edit Caretaker Profile</h4>
                     </div>
                     <div class="card-body p-4">
                         <form method="POST">
@@ -202,17 +202,11 @@ $lastNameVal = $nameParts[1] ?? '';
 
                             <h5 class="section-title">Employment Details</h5>
                             <div class="row g-3 mb-4">
-                                <div class="col-md-<?= $tab === 'staff' ? '4' : '6' ?>">
+                                <div class="col-md-6">
                                     <label class="form-label">Position</label>
                                     <input type="text" class="form-control" name="position" value="<?= e($record['position']) ?>" required>
                                 </div>
-                                <?php if ($tab === 'staff'): ?>
-                                    <div class="col-md-4">
-                                        <label class="form-label">Department</label>
-                                        <input type="text" class="form-control" name="department" value="<?= e($record['department'] ?? '') ?>" required>
-                                    </div>
-                                <?php endif; ?>
-                                <div class="col-md-<?= $tab === 'staff' ? '4' : '6' ?>">
+                                <div class="col-md-6">
                                     <label class="form-label">Shift</label>
                                     <select class="form-select" name="shift" required>
                                         <option value="Morning" <?= $record['shift'] === 'Morning' ? 'selected' : '' ?>>Morning</option>
@@ -239,7 +233,7 @@ $lastNameVal = $nameParts[1] ?? '';
                             </div>
 
                             <div class="d-flex justify-content-between pt-2">
-                                <a href="caretakers_staff.php?tab=<?= e($tab) ?>" class="btn btn-secondary px-4">Cancel</a>
+                                <a href="caretakers.php" class="btn btn-secondary px-4">Cancel</a>
                                 <button type="submit" class="btn btn-success px-4">Update Profile</button>
                             </div>
 

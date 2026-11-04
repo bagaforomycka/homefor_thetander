@@ -155,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $pdo->commit();
 
-                header('Location: caretakers_staff.php?created=1');
+                header('Location: caretakers.php?created=1');
                 exit;
             }
         } catch (Throwable $exception) {
@@ -221,7 +221,6 @@ $selectedStatus = $_POST['status'] ?? 'Active';
         /* app-main is opened in sidebar.php */
         .app-main {
             margin-left: 250px !important;
-            width: calc(100% - 250px) !important;
             max-width: none !important;
             min-width: 0;
             min-height: 100vh;
@@ -619,7 +618,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     Save Caretaker
                 </button>
 
-                <a href="caretakers_staff.php" class="action-btn btn-cancel">
+                <a href="caretakers.php" class="action-btn btn-cancel">
                     Cancel
                 </a>
             </div>

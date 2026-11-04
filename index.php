@@ -402,7 +402,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
                     <p class="text-center small mt-3 mb-0">
                         Forgot your password?
-                        <a href="auth/forgot_password.php"
+                        <a href="reset_password.php"
                            class="green-link">
                             Reset it here
                         </a>
