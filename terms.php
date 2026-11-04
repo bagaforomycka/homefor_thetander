@@ -130,7 +130,7 @@
 <nav class="navbar">
     <div class="container py-2">
         <a class="navbar-brand text-decoration-none" href="index.php">
-            <span class="brand-name">🏡 Home for the Aged</span>
+            <span class="brand-name"> Home for the Aged</span>
             <span class="brand-tagline d-block">CARE · COMFORT · DIGNITY</span>
         </a>
     </div>
