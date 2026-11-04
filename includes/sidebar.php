@@ -66,8 +66,8 @@ if (!function_exists('sidebarLink')) {
                     rgba(255, 255, 255, 0.65),
                     rgba(255, 255, 255, 0.65)
                 ),
-                url('/homefor_thetander/assets/images/aged-care-background.jpg')
-                center center / cover no-repeat fixed;
+                url('/homefor_thetander/assets/images/aged-care-background.jpg?v=<?= (int) @filemtime(__DIR__ . '/../assets/images/aged-care-background.jpg') ?>')
+                center center / cover no-repeat fixed !important;
             color: #080c09;
             font-family: Arial, sans-serif;
         }
@@ -140,6 +140,34 @@ if (!function_exists('sidebarLink')) {
         .sidebar-subtitle + .sidebar-section {
             border-top: none;
             padding-top: 0;
+        }
+
+        /* Logo at the top of the sidebar.
+           Footprint matches the previous logo: same block height,
+           same visible width (about 224px), centred. The single line
+           under it is the first .sidebar-section's own top border. */
+        .app-sidebar .sidebar-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 125px;
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+
+        .app-sidebar .sidebar-logo a {
+            display: block;
+            line-height: 0;
+        }
+
+        .app-sidebar .sidebar-logo img {
+            display: block;
+            width: 224px;
+            max-width: 100%;
+            height: auto;
+            margin: 0;
+            transform: none;
         }
 
         .sidebar-link {
@@ -257,14 +285,15 @@ if (!function_exists('sidebarLink')) {
 
     <aside class="app-sidebar">
 
-        <div class="d-none d-lg-block">
-            <div class="sidebar-brand">
-                Home for the Aged
-            </div>
-
-            <div class="sidebar-subtitle">
-                CARE MANAGEMENT SYSTEM
-            </div>
+        <div class="sidebar-logo">
+            <a href="<?= $currentRole === 'caretaker'
+                ? '/homefor_thetander/caretaker/dashboard.php'
+                : '/homefor_thetander/admin/dashboard.php' ?>">
+                <img
+                    src="/homefor_thetander/images/logo-white.png?v=<?= (int) @filemtime(__DIR__ . '/../images/logo-white.png') ?>"
+                    alt="Home for the Aged - Care, Comfort, Dignity"
+                >
+            </a>
         </div>
 
         <?php if ($currentRole === 'admin'): ?>

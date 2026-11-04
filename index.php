@@ -400,13 +400,6 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                         </button>
                     </form>
 
-                    <div class="text-center text-secondary my-3">OR</div>
-
-                    <a href="auth/register.php"
-                       class="btn btn-outline-green w-100">
-                        ＋ Create Account
-                    </a>
-
                     <p class="text-center small mt-3 mb-0">
                         Forgot your password?
                         <a href="auth/forgot_password.php"
