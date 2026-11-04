@@ -18,11 +18,32 @@
             --text: #304b3b;
         }
 
-        body {
+      body {
             margin: 0;
-            background: #f8fbf8;
+            /* Adds the background photo with a slight dark overlay so text stays readable */
+            background: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), 
+                        url('images/aged-care-background.jpg') no-repeat center center fixed;
+            background-size: cover;
+            min-height: 100vh;
             color: var(--text);
             font-family: Arial, sans-serif;
+        }
+
+        /* Optional: Makes the hero section background transparent so the photo shows through */
+        .terms-hero {
+            padding: 45px 0;
+            background: transparent;
+        }
+        
+        /* Optional: Makes the title text white so it pops against the new background photo */
+        .terms-title {
+            color: #fffbfb !important;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .terms-hero p {
+            color: #f2f2f2;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
 
         .navbar {
@@ -57,10 +78,8 @@
             color: white;
         }
 
-        .terms-hero {
-            padding: 45px 0;
-            background: linear-gradient(120deg, #eaf7ec, #fff);
-        }
+       
+        
 
         .terms-title {
             color: var(--dark-green);
@@ -222,9 +241,7 @@
             legal obligations before using the website with real resident data.
         </p>
 
-        <a href="index.php#login" class="btn btn-green mt-2">
-            &larr; Back to Login
-        </a>
+    
 
     </div>
 </main>
