@@ -19,6 +19,24 @@ function h($value): string
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
+function residentPicture($picture): string
+{
+    $picture = trim((string)($picture ?? ''));
+
+    if ($picture === '') {
+        return '../images/default-profile.png';
+    }
+
+    $filename = basename($picture);
+    $physicalPath = __DIR__ . '/uploads/residentspic/' . $filename;
+
+    if (!is_file($physicalPath)) {
+        return '../images/default-profile.png';
+    }
+
+    return 'uploads/residentspic/' . rawurlencode($filename);
+}
+
 if (empty($_SESSION['residents_csrf'])) {
     $_SESSION['residents_csrf'] = bin2hex(random_bytes(32));
 }
@@ -32,15 +50,132 @@ $residents = [];
 $hasArchivedAt = false;
 
 try {
-    // Check whether archived_at exists in the residents table.
     $columnCheck = $pdo->query("SHOW COLUMNS FROM residents");
     $columns = $columnCheck->fetchAll(PDO::FETCH_COLUMN);
-
     $hasArchivedAt = in_array('archived_at', $columns, true);
-
 } catch (PDOException $e) {
     error_log('Resident column check error: ' . $e->getMessage());
     $error = 'Unable to check the residents database table.';
+}
+
+/* Handle profile picture upload or replacement. */
+if (
+    !$error &&
+    $_SERVER['REQUEST_METHOD'] === 'POST' &&
+    ($_POST['action'] ?? '') === 'upload_picture'
+) {
+    if (!$isAdmin) {
+        http_response_code(403);
+        exit('Only an administrator can upload resident pictures.');
+    }
+
+    $postedToken = $_POST['csrf_token'] ?? '';
+
+    if (!is_string($postedToken) || !hash_equals($csrf, $postedToken)) {
+        http_response_code(403);
+        exit('Invalid security token. Refresh the page and try again.');
+    }
+
+    $residentId = filter_input(INPUT_POST, 'resident_id', FILTER_VALIDATE_INT);
+
+    if (!$residentId || $residentId < 1) {
+        $error = 'Invalid resident selected.';
+    } elseif (
+        !isset($_FILES['profile_picture']) ||
+        $_FILES['profile_picture']['error'] !== UPLOAD_ERR_OK
+    ) {
+        $error = 'Please select a picture to upload.';
+    } else {
+        $file = $_FILES['profile_picture'];
+
+        if ($file['size'] > 5 * 1024 * 1024) {
+            $error = 'The picture must not exceed 5 MB.';
+        } else {
+            $imageInfo = @getimagesize($file['tmp_name']);
+
+            $allowedTypes = [
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/webp' => 'webp'
+            ];
+
+            $mimeType = $imageInfo['mime'] ?? '';
+
+            if (!$imageInfo || !isset($allowedTypes[$mimeType])) {
+                $error = 'Only JPG, PNG, and WEBP images are allowed.';
+            } else {
+                $uploadDirectory = __DIR__ . '/uploads/residentspic/';
+
+                if (
+                    !is_dir($uploadDirectory) &&
+                    !mkdir($uploadDirectory, 0755, true)
+                ) {
+                    $error = 'Unable to create the picture upload folder.';
+                } else {
+                    $extension = $allowedTypes[$mimeType];
+                    $newFilename = 'resident_' . bin2hex(random_bytes(16)) . '.' . $extension;
+                    $destination = $uploadDirectory . $newFilename;
+
+                    try {
+                        $checkResident = $pdo->prepare("
+                            SELECT profile_picture
+                            FROM residents
+                            WHERE id = :id
+                            LIMIT 1
+                        ");
+
+                        $checkResident->execute(['id' => $residentId]);
+                        $existingResident = $checkResident->fetch(PDO::FETCH_ASSOC);
+
+                        if (!$existingResident) {
+                            $error = 'Resident not found.';
+                        } elseif (!move_uploaded_file($file['tmp_name'], $destination)) {
+                            $error = 'Unable to save the uploaded picture.';
+                        } else {
+                            try {
+                                $updatePicture = $pdo->prepare("
+                                    UPDATE residents
+                                    SET profile_picture = :picture
+                                    WHERE id = :id
+                                ");
+
+                                $updatePicture->execute([
+                                    'picture' => $newFilename,
+                                    'id' => $residentId
+                                ]);
+
+                                $oldPicture = basename(
+                                    (string)($existingResident['profile_picture'] ?? '')
+                                );
+
+                                if (
+                                    $oldPicture !== '' &&
+                                    $oldPicture !== $newFilename
+                                ) {
+                                    $oldPath = $uploadDirectory . $oldPicture;
+
+                                    if (is_file($oldPath)) {
+                                        @unlink($oldPath);
+                                    }
+                                }
+
+                                header('Location: residents.php?success=picture');
+                                exit;
+
+                            } catch (PDOException $e) {
+                                @unlink($destination);
+                                throw $e;
+                            }
+                        }
+
+                    } catch (PDOException $e) {
+                        error_log('Profile picture update error: ' . $e->getMessage());
+                        $error = 'Unable to update the resident picture. Please try again.';
+                    }
+                }
+            }
+        }
+    }
 }
 
 /* Archive resident instead of permanently deleting. */
@@ -56,19 +191,12 @@ if (
 
     $postedToken = $_POST['csrf_token'] ?? '';
 
-    if (
-        !is_string($postedToken) ||
-        !hash_equals($csrf, $postedToken)
-    ) {
+    if (!is_string($postedToken) || !hash_equals($csrf, $postedToken)) {
         http_response_code(403);
         exit('Invalid security token. Refresh the page and try again.');
     }
 
-    $residentId = filter_input(
-        INPUT_POST,
-        'resident_id',
-        FILTER_VALIDATE_INT
-    );
+    $residentId = filter_input(INPUT_POST, 'resident_id', FILTER_VALIDATE_INT);
 
     if (!$residentId || $residentId < 1) {
         $error = 'Invalid resident selected.';
@@ -107,7 +235,7 @@ if (
     }
 }
 
-/* Load residents and their assigned caretaker names. */
+/* Load residents and assigned caretaker names. */
 if (!$error) {
     $sql = "
         SELECT
@@ -124,6 +252,7 @@ if (!$error) {
             r.admission_date,
             r.care_level,
             r.assigned_caretaker,
+            r.profile_picture,
             r.status,
             u.full_name AS caretaker_name
         FROM residents r
@@ -243,6 +372,27 @@ require_once __DIR__ . '/../includes/sidebar.php';
     margin-bottom: 14px;
 }
 
+.resident-profile {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    min-width: 0;
+}
+
+.resident-profile-picture {
+    width: 85px;
+    height: 85px;
+    min-width: 85px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #e0eee4;
+    background: #f1f5f2;
+}
+
+.resident-profile-info {
+    min-width: 0;
+}
+
 .resident-card h3 {
     color: #17683a;
     font-size: 19px;
@@ -294,48 +444,60 @@ require_once __DIR__ . '/../includes/sidebar.php';
     margin-top: 14px;
 }
 
-.resident-actions .btn {
-    font-size: 13px;
-    padding: 5px 10px;
-}
-
-.btn-resident-view {
-    color: #198754;
-    background: #fff;
-    border: 1px solid #198754;
-}
-
-.btn-resident-view:hover {
-    color: #fff;
-    background: #198754;
-}
-
-.btn-resident-edit {
-    color: #725800;
-    background: #ffdf70;
-    border: 1px solid #e2b422;
-}
-
-.btn-resident-edit:hover {
-    color: #5d4600;
-    background: #ffcf40;
-}
-
+/* View, Edit, and Delete buttons */
+.btn-resident-view,
+.btn-resident-edit,
 .btn-resident-delete {
-    color: #b42318;
-    background: #fff;
-    border: 1px solid #dc3545;
+    color: #198754;
+    background: #ffffff;
+    border: 1px solid #198754;
+    font-size: 13px;
+    padding: 5px 12px;
+    transition: 0.2s ease;
 }
 
+.btn-resident-view:hover,
+.btn-resident-edit:hover,
 .btn-resident-delete:hover {
+    color: #ffffff;
+    background: #198754;
+    border-color: #198754;
+}
+
+.btn-picture {
+    color: #17683a;
+    background: #eaf6ee;
+    border: 1px solid #b8d9c2;
+}
+
+.btn-picture:hover {
     color: #fff;
-    background: #dc3545;
+    background: #17683a;
+}
+
+.picture-upload-form {
+    margin-top: 12px;
+    padding: 12px;
+    background: #f5faf6;
+    border: 1px solid #e0ebe3;
+    border-radius: 9px;
+}
+
+.picture-upload-form input[type="file"] {
+    max-width: 100%;
+    font-size: 13px;
 }
 
 @media (max-width: 576px) {
     .residents-header,
     .residents-panel {
         padding: 15px;
+    }
+
+    .resident-profile-picture {
+        width: 68px;
+        height: 68px;
+        min-width: 68px;
     }
 }
 </style>
@@ -362,9 +524,9 @@ require_once __DIR__ . '/../includes/sidebar.php';
 <?php elseif ($success === 'updated'): ?>
     <div class="alert alert-success">Resident updated successfully.</div>
 <?php elseif ($success === 'deleted'): ?>
-    <div class="alert alert-success">
-        Resident archived successfully.
-    </div>
+    <div class="alert alert-success">Resident archived successfully.</div>
+<?php elseif ($success === 'picture'): ?>
+    <div class="alert alert-success">Resident profile picture uploaded successfully.</div>
 <?php endif; ?>
 
 <?php if ($error !== ''): ?>
@@ -458,27 +620,87 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
             $status = strtolower($resident['status'] ?? '');
             $statusLabel = ucwords(str_replace('_', ' ', $status));
+
+            $profilePicture = residentPicture(
+                $resident['profile_picture'] ?? ''
+            );
+
+            $hasPicture = !empty($resident['profile_picture']);
             ?>
 
             <div class="resident-card">
 
                 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                    <div>
-                        <h3><?= h($fullName) ?></h3>
 
-                        <div class="resident-meta">
-                            Resident ID: <?= h($resident['resident_id']) ?>
-                            &nbsp;|&nbsp;
-                            Room: <?= h($resident['room_number'] ?: 'Not assigned') ?>
-                            &nbsp;|&nbsp;
-                            Gender: <?= h($resident['gender'] ?: 'Not specified') ?>
+                    <div class="resident-profile">
+
+                        <img
+                            src="<?= h($profilePicture) ?>"
+                            alt="<?= h($fullName) ?> profile picture"
+                            class="resident-profile-picture"
+                            onerror="this.onerror=null;this.src='../images/default-profile.png';"
+                        >
+
+                        <div class="resident-profile-info">
+                            <h3><?= h($fullName) ?></h3>
+
+                            <div class="resident-meta">
+                                Resident ID: <?= h($resident['resident_id']) ?>
+                                &nbsp;|&nbsp;
+                                Room: <?= h($resident['room_number'] ?: 'Not assigned') ?>
+                                &nbsp;|&nbsp;
+                                Gender: <?= h($resident['gender'] ?: 'Not specified') ?>
+                            </div>
                         </div>
+
                     </div>
 
                     <span class="resident-status <?= h($status) ?>">
                         <?= h($statusLabel ?: 'Unspecified') ?>
                     </span>
+
                 </div>
+
+                <?php if ($isAdmin): ?>
+                    <form
+                        method="POST"
+                        action="residents.php"
+                        enctype="multipart/form-data"
+                        class="picture-upload-form"
+                    >
+                        <input type="hidden" name="action" value="upload_picture">
+
+                        <input
+                            type="hidden"
+                            name="csrf_token"
+                            value="<?= h($csrf) ?>"
+                        >
+
+                        <input
+                            type="hidden"
+                            name="resident_id"
+                            value="<?= (int)$resident['id'] ?>"
+                        >
+
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <input
+                                type="file"
+                                name="profile_picture"
+                                class="form-control form-control-sm"
+                                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                required
+                            >
+
+                            <button type="submit" class="btn btn-picture btn-sm">
+                                <?= $hasPicture ? 'Replace Picture' : 'Upload Picture' ?>
+                            </button>
+                        </div>
+
+                        <small class="text-secondary">
+                            JPG, PNG, or WEBP. Maximum file size: 5 MB.
+                        </small>
+                    </form>
+                <?php endif; ?>
 
                 <div class="row g-2 mt-2">
 

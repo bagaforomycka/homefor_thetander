@@ -1,9 +1,10 @@
+
 <?php
 session_start();
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    $_SESSION['role'] !== 'admin'
+    strtolower($_SESSION['role']) !== 'admin'
 ) {
     header('Location: ../index.php');
     exit;
@@ -16,51 +17,61 @@ function e($value): string
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$errors = [];
+$error = '';
 
-$values = [
-    'resident_id' => '',
-    'first_name' => '',
-    'middle_name' => '',
-    'last_name' => '',
-    'date_of_birth' => '',
-    'gender' => '',
-    'contact_number' => '',
-    'address' => '',
-    'room_number' => '',
-    'admission_date' => date('Y-m-d'),
-    'care_level' => '',
-    'assigned_caretaker' => '',
-    'status' => 'new'
-];
+$uploadDirectory = __DIR__ . '/uploads/residentspic/';
 
+if (!is_dir($uploadDirectory)) {
+    if (!mkdir($uploadDirectory, 0755, true) && !is_dir($uploadDirectory)) {
+        $error = 'Unable to create the resident picture upload folder.';
+    }
+}
+
+// Load caretaker accounts.
 $caretakers = [];
 
-try {
-    // Load caretaker accounts.
-    // This assumes users has an id, full_name, and role column.
-    $caretakerQuery = $pdo->prepare(
-        "SELECT id, full_name
-         FROM users
-         WHERE role = 'caretaker'
-         ORDER BY full_name"
-    );
-    $caretakerQuery->execute();
-    $caretakers = $caretakerQuery->fetchAll(PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    error_log($e->getMessage());
-    $errors[] = 'Unable to load caretakers. Check your users table columns.';
+if ($error === '') {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, full_name
+            FROM users
+            WHERE LOWER(role) = 'caretaker'
+            ORDER BY full_name ASC
+        ");
+
+        $stmt->execute();
+        $caretakers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    } catch (PDOException $ex) {
+        error_log('Caretaker loading error: ' . $ex->getMessage());
+        $error = 'Unable to load caretaker accounts.';
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    foreach ($values as $key => $default) {
-        if (isset($_POST[$key]) && is_string($_POST[$key])) {
-            $values[$key] = trim($_POST[$key]);
-        }
-    }
 
-    $allowedGenders = ['Male', 'Female', 'Other'];
-    $allowedCareLevels = ['Low', 'Moderate', 'High'];
+    $residentId = trim($_POST['resident_id'] ?? '');
+    $firstName = trim($_POST['first_name'] ?? '');
+    $middleName = trim($_POST['middle_name'] ?? '');
+    $lastName = trim($_POST['last_name'] ?? '');
+    $dateOfBirth = trim($_POST['date_of_birth'] ?? '');
+    $gender = trim($_POST['gender'] ?? '');
+    $contactNumber = trim($_POST['contact_number'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $roomNumber = trim($_POST['room_number'] ?? '');
+    $admissionDate = trim($_POST['admission_date'] ?? '');
+    $careLevel = trim($_POST['care_level'] ?? '');
+    $status = trim($_POST['status'] ?? 'new');
+
+    $caretakerInput = trim($_POST['assigned_caretaker'] ?? '');
+
+    $caretakerId = $caretakerInput === ''
+        ? null
+        : filter_var($caretakerInput, FILTER_VALIDATE_INT);
+
+    $profilePicture = null;
+    $uploadedFilePath = null;
+
     $allowedStatuses = [
         'active',
         'needs_attention',
@@ -69,168 +80,228 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'archived'
     ];
 
-    if ($values['resident_id'] === '') {
-        $errors[] = 'Resident ID is required.';
+    $allowedCareLevels = [
+        'Low',
+        'Moderate',
+        'High'
+    ];
+
+    $allowedGenders = [
+        'Male',
+        'Female',
+        'Other'
+    ];
+
+    // Validate required information.
+    if ($residentId === '' || $firstName === '' || $lastName === '') {
+        $error = 'Please complete all required resident information.';
+    } elseif (!in_array($status, $allowedStatuses, true)) {
+        $error = 'Please select a valid resident status.';
+    } elseif ($careLevel !== '' && !in_array($careLevel, $allowedCareLevels, true)) {
+        $error = 'Please select a valid care level.';
+    } elseif ($gender !== '' && !in_array($gender, $allowedGenders, true)) {
+        $error = 'Please select a valid gender.';
+    } elseif ($caretakerInput !== '' && $caretakerId === false) {
+        $error = 'Please select a valid caretaker.';
     }
 
-    if ($values['first_name'] === '' || $values['last_name'] === '') {
-        $errors[] = 'First name and last name are required.';
+    // Validate selected caretaker.
+    if ($error === '' && $caretakerId !== null) {
+
+        $validCaretakerIds = array_map(
+            'intval',
+            array_column($caretakers, 'id')
+        );
+
+        if (!in_array((int)$caretakerId, $validCaretakerIds, true)) {
+            $error = 'The selected caretaker account does not exist.';
+        }
     }
 
+    // Validate dates.
+    if ($error === '' && $dateOfBirth !== '') {
+
+        $date = DateTime::createFromFormat('Y-m-d', $dateOfBirth);
+
+        if (!$date || $date->format('Y-m-d') !== $dateOfBirth) {
+            $error = 'Please enter a valid date of birth.';
+        }
+    }
+
+    if ($error === '' && $admissionDate !== '') {
+
+        $date = DateTime::createFromFormat('Y-m-d', $admissionDate);
+
+        if (!$date || $date->format('Y-m-d') !== $admissionDate) {
+            $error = 'Please enter a valid admission date.';
+        }
+    }
+
+    // Require a profile picture.
     if (
-        $values['gender'] !== '' &&
-        !in_array($values['gender'], $allowedGenders, true)
+        $error === '' &&
+        (
+            !isset($_FILES['profile_picture']) ||
+            $_FILES['profile_picture']['error'] === UPLOAD_ERR_NO_FILE
+        )
     ) {
-        $errors[] = 'Please select a valid gender.';
+        $error = 'Please upload a resident profile picture.';
     }
 
-    if (
-        $values['care_level'] !== '' &&
-        !in_array($values['care_level'], $allowedCareLevels, true)
-    ) {
-        $errors[] = 'Please select a valid care level.';
-    }
+    // Upload and validate profile picture.
+    if ($error === '' && isset($_FILES['profile_picture'])) {
 
-    if (!in_array($values['status'], $allowedStatuses, true)) {
-        $errors[] = 'Please select a valid status.';
-    }
+        $file = $_FILES['profile_picture'];
 
-    foreach (['date_of_birth', 'admission_date'] as $dateField) {
-        if ($values[$dateField] !== '') {
-            $date = DateTime::createFromFormat(
-                '!Y-m-d',
-                $values[$dateField]
-            );
+        if ($file['error'] !== UPLOAD_ERR_OK) {
 
-            if (
-                !$date ||
-                $date->format('Y-m-d') !== $values[$dateField]
-            ) {
-                $errors[] = 'Please enter valid dates.';
-                break;
+            $uploadErrors = [
+                UPLOAD_ERR_INI_SIZE => 'The picture exceeds the server upload limit.',
+                UPLOAD_ERR_FORM_SIZE => 'The picture exceeds the form upload limit.',
+                UPLOAD_ERR_PARTIAL => 'The picture was only partially uploaded.',
+                UPLOAD_ERR_NO_TMP_DIR => 'The server temporary upload folder is missing.',
+                UPLOAD_ERR_CANT_WRITE => 'The server could not save the uploaded picture.',
+                UPLOAD_ERR_EXTENSION => 'A server extension stopped the upload.'
+            ];
+
+            $error = $uploadErrors[$file['error']] ?? 'An unknown upload error occurred.';
+
+        } elseif ($file['size'] > 5 * 1024 * 1024) {
+
+            $error = 'The profile picture must not exceed 5 MB.';
+
+        } elseif (!is_uploaded_file($file['tmp_name'])) {
+
+            $error = 'The uploaded file could not be verified.';
+
+        } else {
+
+            $imageInfo = getimagesize($file['tmp_name']);
+
+            if ($imageInfo === false) {
+
+                $error = 'Please select a valid image file.';
+
+            } else {
+
+                $allowedMimeTypes = [
+                    'image/jpeg' => 'jpg',
+                    'image/png' => 'png',
+                    'image/webp' => 'webp'
+                ];
+
+                $mimeType = $imageInfo['mime'] ?? '';
+
+                if (!isset($allowedMimeTypes[$mimeType])) {
+
+                    $error = 'Only JPG, PNG, and WEBP images are allowed.';
+
+                } else {
+
+                    $extension = $allowedMimeTypes[$mimeType];
+
+                    $profilePicture = 'resident_' .
+                        bin2hex(random_bytes(12)) . '.' . $extension;
+
+                    $uploadedFilePath = $uploadDirectory . $profilePicture;
+
+                    if (!move_uploaded_file($file['tmp_name'], $uploadedFilePath)) {
+
+                        $error = 'Unable to save the profile picture. Check the upload folder permissions.';
+
+                        $profilePicture = null;
+                        $uploadedFilePath = null;
+                    }
+                }
             }
         }
     }
 
-    if (
-        $values['date_of_birth'] !== '' &&
-        $values['date_of_birth'] > date('Y-m-d')
-    ) {
-        $errors[] = 'Date of birth cannot be in the future.';
-    }
+    // Insert resident information into database.
+    if ($error === '') {
 
-    if (
-        $values['admission_date'] !== '' &&
-        $values['admission_date'] > date('Y-m-d')
-    ) {
-        $errors[] = 'Admission date cannot be in the future.';
-    }
-
-    if (strlen($values['resident_id']) > 50) {
-        $errors[] = 'Resident ID cannot exceed 50 characters.';
-    }
-
-    if (!$errors) {
         try {
-            $check = $pdo->prepare(
-                'SELECT id FROM residents
-                 WHERE resident_id = :resident_id
-                 LIMIT 1'
-            );
 
-            $check->execute([
-                'resident_id' => $values['resident_id']
+            $stmt = $pdo->prepare("
+                INSERT INTO residents (
+                    resident_id,
+                    first_name,
+                    middle_name,
+                    last_name,
+                    date_of_birth,
+                    gender,
+                    contact_number,
+                    address,
+                    room_number,
+                    admission_date,
+                    care_level,
+                    assigned_caretaker,
+                    status,
+                    profile_picture
+                ) VALUES (
+                    :resident_id,
+                    :first_name,
+                    :middle_name,
+                    :last_name,
+                    :date_of_birth,
+                    :gender,
+                    :contact_number,
+                    :address,
+                    :room_number,
+                    :admission_date,
+                    :care_level,
+                    :assigned_caretaker,
+                    :status,
+                    :profile_picture
+                )
+            ");
+
+            $stmt->execute([
+                'resident_id' => $residentId,
+                'first_name' => $firstName,
+                'middle_name' => $middleName !== '' ? $middleName : null,
+                'last_name' => $lastName,
+                'date_of_birth' => $dateOfBirth !== '' ? $dateOfBirth : null,
+                'gender' => $gender !== '' ? $gender : null,
+                'contact_number' => $contactNumber !== '' ? $contactNumber : null,
+                'address' => $address !== '' ? $address : null,
+                'room_number' => $roomNumber !== '' ? $roomNumber : null,
+                'admission_date' => $admissionDate !== '' ? $admissionDate : null,
+                'care_level' => $careLevel !== '' ? $careLevel : null,
+                'assigned_caretaker' => $caretakerId !== null ? (int)$caretakerId : null,
+                'status' => $status,
+                'profile_picture' => $profilePicture
             ]);
 
-            if ($check->fetch()) {
-                $errors[] = 'That Resident ID already exists.';
-            } else {
-                // Validate the selected caretaker ID.
-                $caretakerId = null;
+            header('Location: residents.php?added=1');
+            exit;
 
-                if ($values['assigned_caretaker'] !== '') {
-                    if (
-                        !ctype_digit($values['assigned_caretaker']) ||
-                        !in_array(
-                            (int)$values['assigned_caretaker'],
-                            array_map(
-                                'intval',
-                                array_column($caretakers, 'id')
-                            ),
-                            true
-                        )
-                    ) {
-                        $errors[] = 'Please select a valid caretaker.';
-                    } else {
-                        $caretakerId = (int)$values['assigned_caretaker'];
-                    }
-                }
+        } catch (PDOException $ex) {
 
-                if (!$errors) {
-                    $stmt = $pdo->prepare(
-                        'INSERT INTO residents (
-                            resident_id,
-                            first_name,
-                            middle_name,
-                            last_name,
-                            date_of_birth,
-                            gender,
-                            contact_number,
-                            address,
-                            room_number,
-                            admission_date,
-                            care_level,
-                            assigned_caretaker,
-                            status
-                        ) VALUES (
-                            :resident_id,
-                            :first_name,
-                            :middle_name,
-                            :last_name,
-                            :date_of_birth,
-                            :gender,
-                            :contact_number,
-                            :address,
-                            :room_number,
-                            :admission_date,
-                            :care_level,
-                            :assigned_caretaker,
-                            :status
-                        )'
-                    );
-
-                    $stmt->execute([
-                        'resident_id' => $values['resident_id'],
-                        'first_name' => $values['first_name'],
-                        'middle_name' => $values['middle_name'] ?: null,
-                        'last_name' => $values['last_name'],
-                        'date_of_birth' => $values['date_of_birth'] ?: null,
-                        'gender' => $values['gender'] ?: null,
-                        'contact_number' => $values['contact_number'] ?: null,
-                        'address' => $values['address'] ?: null,
-                        'room_number' => $values['room_number'] ?: null,
-                        'admission_date' => $values['admission_date'] ?: null,
-                        'care_level' => $values['care_level'] ?: null,
-                        'assigned_caretaker' => $caretakerId,
-                        'status' => $values['status']
-                    ]);
-
-                    header('Location: residents.php?added=1');
-                    exit;
-                }
+            // Remove the uploaded image if the database insert fails.
+            if ($uploadedFilePath && is_file($uploadedFilePath)) {
+                unlink($uploadedFilePath);
             }
-        } catch (PDOException $e) {
-            error_log($e->getMessage());
-            $errors[] = 'The resident could not be saved. Check the server error log for the database error.';
+
+            error_log('Add Resident error: ' . $ex->getMessage());
+
+            if ($ex->getCode() === '23000') {
+                $error = 'This Resident ID may already exist. Please use a different ID.';
+            } else {
+                $error = 'Unable to save the resident. Please check the database table structure and PHP error log.';
+            }
         }
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+
     <title>Add Resident | Home for the Aged</title>
 
     <link
@@ -239,335 +310,387 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     >
 
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
         body {
-            background: #f5f8f6;
-            color: #24352b;
-            font-family: Arial, Helvetica, sans-serif;
-            overflow-x: hidden;
+            background: #f3f7f4;
+            font-family: Arial, sans-serif;
         }
 
-        /* SIDEBAR LOGO (injected at top of sidebar) */
-        .sidebar-logo {
-            display: block;
-            padding: 10px 4px 6px;
-        }
-
-        .sidebar-logo a {
-            display: block;
-        }
-
-        .sidebar-logo img {
-            display: block;
+        .add-resident-page {
             width: 100%;
-            max-width: 300px;
-            height: auto;
+            max-width: 1600px;
             margin: 0 auto;
-            transform: scale(1.1);
         }
 
-        .app-main {
-            margin-left: 250px !important;
-            width: calc(100% - 250px) !important;
-            max-width: none !important;
-            min-width: 0;
-            min-height: 100vh;
-            padding: 28px !important;
-            box-shadow: none !important;
-            overflow-x: hidden;
+        .page-header {
+            background: #304f3e;
+            color: #fff;
+            padding: 28px;
+            border-radius: 0 0 15px 15px;
+            margin-bottom: 30px;
         }
 
-        .page-heading {
-            background: #304b3b;
-            color: white;
-            border-radius: 14px;
-            padding: 22px;
+        .page-header h1 {
+            font-size: 30px;
+            margin-bottom: 8px;
         }
 
-        .form-card {
-            background: white;
-            padding: 26px;
-            border-radius: 14px;
-            box-shadow: 0 3px 14px rgba(0, 0, 0, .06);
+        .page-header p {
+            margin: 0;
+        }
+
+        .form-container {
+            background: #fff;
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, .04);
+        }
+
+        .section-title {
+            font-size: 21px;
+            color: #183f29;
+            font-weight: 700;
+            margin-bottom: 20px;
         }
 
         .form-label {
             font-weight: 600;
+            color: #303a33;
+            margin-bottom: 8px;
         }
 
-        .sidebar-link.active {
-            box-shadow: none !important;
-            outline: none !important;
+        .form-control,
+        .form-select {
+            min-height: 45px;
+            border-color: #dce5de;
         }
 
-        @media (max-width: 760px) {
-            .app-main {
-                margin-left: 0 !important;
-                width: 100% !important;
-                padding: 18px 12px !important;
+        .form-control:focus,
+        .form-select:focus {
+            border-color: #43845b;
+            box-shadow: 0 0 0 .2rem rgba(67, 132, 91, .12);
+        }
+
+        textarea.form-control {
+            min-height: 100px;
+        }
+
+        .picture-section {
+            background: #f7faf8;
+            border: 1px solid #e1ebe4;
+            border-radius: 13px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .picture-preview {
+            width: 140px;
+            height: 140px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 3px solid #dce9df;
+            background: #e6f0e8;
+            display: block;
+            margin-bottom: 20px;
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            border-top: 1px solid #e8eee9;
+            padding-top: 25px;
+            margin-top: 30px;
+        }
+
+        .btn-save {
+            background: #17683a;
+            color: #fff;
+            border: none;
+            padding: 11px 25px;
+            border-radius: 7px;
+        }
+
+        .btn-save:hover {
+            background: #0b5425;
+            color: #fff;
+        }
+
+        .btn-cancel {
+            padding: 11px 25px;
+            border-radius: 7px;
+        }
+
+        @media (max-width: 576px) {
+            .form-container {
+                padding: 20px;
+            }
+
+            .page-header {
+                padding: 22px;
             }
         }
     </style>
 </head>
+
 <body>
 
-<?php require __DIR__ . '/../includes/sidebar.php'; ?>
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
-<div class="page-heading mb-4">
-    <h1 class="h3 mb-1">Add Resident</h1>
-    <p class="mb-0">Enter the resident's details below.</p>
-</div>
+<div class="add-resident-page">
 
-<div class="form-card">
+    <div class="page-header">
+        <h1>Add Resident</h1>
+        <p>Enter the resident's information and upload a profile picture.</p>
+    </div>
 
-    <?php if ($errors): ?>
-        <div class="alert alert-danger">
-            <ul class="mb-0">
-                <?php foreach ($errors as $error): ?>
-                    <li><?= e($error) ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-    <?php endif; ?>
+    <div class="form-container">
 
-    <form method="POST" action="">
-        <div class="row g-3">
+        <?php if ($error !== ''): ?>
+            <div class="alert alert-danger">
+                <?= e($error) ?>
+            </div>
+        <?php endif; ?>
 
-            <div class="col-md-4">
-                <label class="form-label" for="resident_id">Resident ID *</label>
-                <input
-                    class="form-control"
-                    id="resident_id"
-                    name="resident_id"
-                    maxlength="50"
-                    required
-                    value="<?= e($values['resident_id']) ?>"
+        <form method="POST" enctype="multipart/form-data">
+
+            <h4 class="section-title">Resident Profile Picture</h4>
+
+            <div class="picture-section">
+
+                <img
+                    src="../images/default-profile.png"
+                    alt="Profile picture preview"
+                    class="picture-preview"
+                    id="picturePreview"
                 >
-            </div>
 
-            <div class="col-md-4">
-                <label class="form-label" for="first_name">First Name *</label>
-                <input
-                    class="form-control"
-                    id="first_name"
-                    name="first_name"
-                    maxlength="100"
-                    required
-                    value="<?= e($values['first_name']) ?>"
-                >
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label" for="middle_name">Middle Name</label>
-                <input
-                    class="form-control"
-                    id="middle_name"
-                    name="middle_name"
-                    maxlength="100"
-                    value="<?= e($values['middle_name']) ?>"
-                >
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label" for="last_name">Last Name *</label>
-                <input
-                    class="form-control"
-                    id="last_name"
-                    name="last_name"
-                    maxlength="100"
-                    required
-                    value="<?= e($values['last_name']) ?>"
-                >
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label" for="date_of_birth">Date of Birth</label>
-                <input
-                    type="date"
-                    class="form-control"
-                    id="date_of_birth"
-                    name="date_of_birth"
-                    max="<?= date('Y-m-d') ?>"
-                    value="<?= e($values['date_of_birth']) ?>"
-                >
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label" for="gender">Gender</label>
-                <select class="form-select" id="gender" name="gender">
-                    <option value="">Select gender</option>
-                    <?php foreach (['Male', 'Female', 'Other'] as $option): ?>
-                        <option
-                            value="<?= e($option) ?>"
-                            <?= $values['gender'] === $option ? 'selected' : '' ?>
-                        >
-                            <?= e($option) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label" for="contact_number">Contact Number</label>
-                <input
-                    class="form-control"
-                    id="contact_number"
-                    name="contact_number"
-                    maxlength="30"
-                    value="<?= e($values['contact_number']) ?>"
-                >
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label" for="room_number">Room Number</label>
-                <input
-                    class="form-control"
-                    id="room_number"
-                    name="room_number"
-                    maxlength="30"
-                    value="<?= e($values['room_number']) ?>"
-                >
-            </div>
-
-            <div class="col-12">
-                <label class="form-label" for="address">Address</label>
-                <textarea
-                    class="form-control"
-                    id="address"
-                    name="address"
-                    rows="2"
-                ><?= e($values['address']) ?></textarea>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label" for="admission_date">Admission Date</label>
-                <input
-                    type="date"
-                    class="form-control"
-                    id="admission_date"
-                    name="admission_date"
-                    max="<?= date('Y-m-d') ?>"
-                    value="<?= e($values['admission_date']) ?>"
-                >
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label" for="care_level">Care Level</label>
-                <select class="form-select" id="care_level" name="care_level">
-                    <option value="">Select care level</option>
-                    <?php foreach (['Low', 'Moderate', 'High'] as $option): ?>
-                        <option
-                            value="<?= e($option) ?>"
-                            <?= $values['care_level'] === $option ? 'selected' : '' ?>
-                        >
-                            <?= e($option) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <div class="col-md-6">
-                <label class="form-label" for="assigned_caretaker">
-                    Assigned Caretaker
+                <label for="profile_picture" class="form-label">
+                    Upload Profile Picture *
                 </label>
-                <select
-                    class="form-select"
-                    id="assigned_caretaker"
-                    name="assigned_caretaker"
+
+                <input
+                    type="file"
+                    name="profile_picture"
+                    id="profile_picture"
+                    class="form-control"
+                    accept="image/jpeg,image/png,image/webp"
+                    required
                 >
-                    <option value="">No caretaker assigned</option>
 
-                    <?php foreach ($caretakers as $caretaker): ?>
-                        <option
-                            value="<?= e($caretaker['id']) ?>"
-                            <?= (string)$values['assigned_caretaker'] ===
-                                (string)$caretaker['id'] ? 'selected' : '' ?>
-                        >
-                            <?= e($caretaker['full_name']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                <small class="text-secondary">
+                    JPG, PNG, or WEBP. Maximum file size: 5 MB.
+                </small>
+
             </div>
 
-            <div class="col-md-6">
-                <label class="form-label" for="status">Status</label>
-                <select class="form-select" id="status" name="status" required>
-                    <?php
-                    $statuses = [
-                        'new' => 'New',
-                        'active' => 'Active',
-                        'needs_attention' => 'Needs Attention',
-                        'discharged' => 'Discharged',
-                        'archived' => 'Archived'
-                    ];
-                    ?>
+            <h4 class="section-title">Personal Information</h4>
 
-                    <?php foreach ($statuses as $value => $label): ?>
-                        <option
-                            value="<?= e($value) ?>"
-                            <?= $values['status'] === $value ? 'selected' : '' ?>
-                        >
-                            <?= e($label) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+            <div class="row g-3">
+
+                <div class="col-md-6">
+                    <label class="form-label">Resident ID *</label>
+                    <input
+                        type="text"
+                        name="resident_id"
+                        class="form-control"
+                        value="<?= e($_POST['resident_id'] ?? '') ?>"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">First Name *</label>
+                    <input
+                        type="text"
+                        name="first_name"
+                        class="form-control"
+                        value="<?= e($_POST['first_name'] ?? '') ?>"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Middle Name</label>
+                    <input
+                        type="text"
+                        name="middle_name"
+                        class="form-control"
+                        value="<?= e($_POST['middle_name'] ?? '') ?>"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Last Name *</label>
+                    <input
+                        type="text"
+                        name="last_name"
+                        class="form-control"
+                        value="<?= e($_POST['last_name'] ?? '') ?>"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Date of Birth</label>
+                    <input
+                        type="date"
+                        name="date_of_birth"
+                        class="form-control"
+                        value="<?= e($_POST['date_of_birth'] ?? '') ?>"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Gender</label>
+                    <select name="gender" class="form-select">
+                        <option value="">Select Gender</option>
+                        <option value="Male" <?= ($_POST['gender'] ?? '') === 'Male' ? 'selected' : '' ?>>Male</option>
+                        <option value="Female" <?= ($_POST['gender'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option>
+                        <option value="Other" <?= ($_POST['gender'] ?? '') === 'Other' ? 'selected' : '' ?>>Other</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Contact Number</label>
+                    <input
+                        type="text"
+                        name="contact_number"
+                        class="form-control"
+                        value="<?= e($_POST['contact_number'] ?? '') ?>"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Room Number</label>
+                    <input
+                        type="text"
+                        name="room_number"
+                        class="form-control"
+                        value="<?= e($_POST['room_number'] ?? '') ?>"
+                    >
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Address</label>
+                    <textarea name="address" class="form-control"><?= e($_POST['address'] ?? '') ?></textarea>
+                </div>
+
             </div>
 
-        </div>
+            <h4 class="section-title mt-4">Care Information</h4>
 
-        <div class="d-flex flex-wrap gap-2 mt-4">
-            <button type="submit" class="btn btn-success">
-                Save Resident
-            </button>
+            <div class="row g-3">
 
-            <a href="residents.php" class="btn btn-outline-secondary">
-                Cancel
-            </a>
-        </div>
-    </form>
+                <div class="col-md-6">
+                    <label class="form-label">Admission Date</label>
+                    <input
+                        type="date"
+                        name="admission_date"
+                        class="form-control"
+                        value="<?= e($_POST['admission_date'] ?? '') ?>"
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Care Level</label>
+                    <select name="care_level" class="form-select">
+                        <option value="">Select Care Level</option>
+                        <option value="Low" <?= ($_POST['care_level'] ?? '') === 'Low' ? 'selected' : '' ?>>Low</option>
+                        <option value="Moderate" <?= ($_POST['care_level'] ?? '') === 'Moderate' ? 'selected' : '' ?>>Moderate</option>
+                        <option value="High" <?= ($_POST['care_level'] ?? '') === 'High' ? 'selected' : '' ?>>High</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Assigned Caretaker</label>
+                    <select name="assigned_caretaker" class="form-select">
+                        <option value="">Not Assigned</option>
+
+                        <?php foreach ($caretakers as $caretaker): ?>
+                            <option
+                                value="<?= (int)$caretaker['id'] ?>"
+                                <?= (string)($_POST['assigned_caretaker'] ?? '') === (string)$caretaker['id'] ? 'selected' : '' ?>
+                            >
+                                <?= e($caretaker['full_name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Resident Status</label>
+                    <select name="status" class="form-select" required>
+                        <?php
+                        $statuses = [
+                            'new' => 'New',
+                            'active' => 'Active',
+                            'needs_attention' => 'Needs Attention',
+                            'discharged' => 'Discharged',
+                            'archived' => 'Archived'
+                        ];
+
+                        $selectedStatus = $_POST['status'] ?? 'new';
+                        ?>
+
+                        <?php foreach ($statuses as $value => $label): ?>
+                            <option
+                                value="<?= e($value) ?>"
+                                <?= $selectedStatus === $value ? 'selected' : '' ?>
+                            >
+                                <?= e($label) ?>
+                            </option>
+                        <?php endforeach; ?>
+
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="form-actions">
+
+                <a href="residents.php" class="btn btn-outline-secondary btn-cancel">
+                    Cancel
+                </a>
+
+                <button type="submit" class="btn btn-save">
+                    Save Resident
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
 </div>
 
-<!-- Puts the logo at the top of the sidebar and hides the old text title -->
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var sidebar = document.querySelector(
-        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
-    );
+</main>
 
-    if (!sidebar) {
+<script>
+const pictureInput = document.getElementById('profile_picture');
+const picturePreview = document.getElementById('picturePreview');
+
+pictureInput.addEventListener('change', function () {
+
+    const file = this.files[0];
+
+    if (!file) {
+        picturePreview.src = '../images/default-profile.png';
         return;
     }
 
-    // Hide the old text title and subtitle
-    var oldTexts = ['home for the aged', 'care management system'];
-
-    sidebar.querySelectorAll('*').forEach(function (el) {
-        if (
-            el.children.length === 0 &&
-            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-        ) {
-            el.style.display = 'none';
-        }
-    });
-
-    // Add the logo
-    if (!sidebar.querySelector('.sidebar-logo')) {
-        var logo = document.createElement('div');
-        logo.className = 'sidebar-logo';
-        logo.innerHTML =
-            '<a href="/homefor_thetander/admin/dashboard.php">' +
-            '<img src="/homefor_thetander/images/white1.png" ' +
-            'alt="Home for the Aged - Care, Comfort, Dignity">' +
-            '</a>';
-
-        sidebar.insertBefore(logo, sidebar.firstChild);
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file.');
+        this.value = '';
+        picturePreview.src = '../images/default-profile.png';
+        return;
     }
+
+    picturePreview.src = URL.createObjectURL(file);
 });
 </script>
 
-</main>
 </body>
 </html>
