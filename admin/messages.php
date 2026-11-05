@@ -17,72 +17,9 @@ function e($value): string
 }
 
 $search = trim($_GET['search'] ?? '');
+$tab = trim($_GET['tab'] ?? 'caretakers');
 
-/* Archive a message using POST. */
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    ($_POST['action'] ?? '') === 'archive'
-) {
-    $token = $_POST['csrf_token'] ?? '';
-    $messageId = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
-
-    if (
-        !is_string($token) ||
-        !hash_equals($_SESSION['messages_csrf'], $token)
-    ) {
-        $errors[] = 'Security check failed. Refresh the page and try again.';
-    } elseif (!$messageId || $messageId < 1) {
-        $errors[] = 'Invalid message ID.';
-    } else {
-        try {
-            /*
-             * The existing messages table uses status = 'deleted'
-             * as its archive marker.
-             *
-             * Only the recipient can archive their own inbox copy.
-             */
-            $stmt = $pdo->prepare(
-                "UPDATE messages
-                 SET status = 'deleted'
-                 WHERE id = :id
-                   AND recipient_id = :recipient_id
-                   AND status <> 'deleted'"
-            );
-
-            $stmt->execute([
-                'id' => $messageId,
-                'recipient_id' => $_SESSION['user_id']
-            ]);
-
-            if ($stmt->rowCount() > 0) {
-                header(
-                    'Location: messages.php?tab=' .
-                    urlencode($tab) .
-                    '&msg=archived'
-                );
-                exit;
-            }
-
-            $errors[] = 'Message not found or it has already been archived.';
-        } catch (PDOException $ex) {
-            error_log('Message archive error: ' . $ex->getMessage());
-            $errors[] = 'Unable to archive the message. Please check the messages table.';
-        }
-    }
-}
-
-/* Display feedback after redirect. */
-if (isset($_GET['msg'])) {
-    if ($_GET['msg'] === 'sent') {
-        $successMessage = 'Message successfully sent!';
-    } elseif ($_GET['msg'] === 'archived') {
-        $successMessage = 'Message moved to Archive & Restore, if supported there.';
-    }
-}
-
-/* Fetch messages for the selected inbox tab. */
 $messages = [];
-$errorMsg = '';
 
 try {
     $sql = "SELECT m.*, c.full_name as sender_name 
@@ -124,20 +61,14 @@ try {
             --text: #304b3b;
         }
 
-        * {
-            box-sizing: border-box;
-        }
-
         body {
             background: #f8fbf8;
             color: var(--text);
             font-family: Arial, sans-serif;
-            display: flex;
-            min-height: 100vh;
             overflow-x: hidden;
         }
 
-        /* SIDEBAR LOGO (injected at top of sidebar) */
+        /* SIDEBAR LOGO */
         .sidebar-logo {
             display: block;
             padding: 10px 4px 6px;
@@ -158,7 +89,7 @@ try {
 
         .main-content {
             margin-left: 10px;
-            padding: 30px;
+            padding: 24px 32px 32px 24px;
         }
 
         .card {
@@ -197,8 +128,6 @@ try {
 </head>
 <body>
 
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
-
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="main-content">
@@ -208,33 +137,15 @@ try {
             <p class="text-muted mb-0">View and manage internal communication and system alerts.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="dashboard.php" class="btn btn-outline-success">
-                &larr; Back to Dashboard
-            </a>
-            <a href="new_message.php" class="btn btn-success">
-                + New Message
-            </a>
+            <a href="dashboard.php" class="btn btn-outline-success">← Back to Dashboard</a>
+            <a href="new_message.php" class="btn btn-success">+ New Message</a>
         </div>
     </div>
 
     <!-- Navigation Tabs -->
     <div class="mb-4">
-        <div class="btn-group flex-wrap" role="group" aria-label="Message tabs">
-            <a href="messages.php?tab=admin_staff"
-               class="btn btn-outline-success <?= $tab === 'admin_staff' ? 'active' : '' ?>">
-                Admin &amp; Staff
-            </a>
-
-            <a href="messages.php?tab=caretakers"
-               class="btn btn-outline-success <?= $tab === 'caretakers' ? 'active' : '' ?>">
-                Caretakers
-            </a>
-
-            <a href="messages.php?tab=unread"
-               class="btn btn-outline-success <?= $tab === 'unread' ? 'active' : '' ?>">
-                Unread
-            </a>
-        </div>
+        <a href="messages.php?tab=caretakers" class="btn <?= $tab === 'caretakers' ? 'btn-success' : 'btn-outline-success' ?> px-4">Caretakers</a>
+        <a href="messages.php?tab=unread" class="btn <?= $tab === 'unread' ? 'btn-success' : 'btn-outline-success' ?> px-4">Unread</a>
     </div>
 
     <div class="card p-3 mb-4">
@@ -304,18 +215,11 @@ try {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- Puts the logo at the top of the sidebar and hides the old text title -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var sidebar = document.querySelector(
-        '.sidebar, #sidebar, .sidebar-container, aside, nav'
-    );
+    var sidebar = document.querySelector('.sidebar, #sidebar, .sidebar-container, aside, nav');
+    if (!sidebar) return;
 
-    if (!sidebar) {
-        return;
-    }
-
-    // Hide the old text title and subtitle
     var oldTexts = ['home for the aged', 'care management system'];
     sidebar.querySelectorAll('*').forEach(function (el) {
         if (el.children.length === 0 && oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1) {
@@ -328,38 +232,6 @@ document.addEventListener('DOMContentLoaded', function () {
         logo.className = 'sidebar-logo';
         logo.innerHTML = '<a href="dashboard.php"><img src="../images/white1.png" alt="Home for the Aged"></a>';
         sidebar.insertBefore(logo, sidebar.firstChild);
-    }
-
-    if (!sidebar.querySelector('#sidebarToggle')) {
-        var toggleWrapper = document.createElement('div');
-        toggleWrapper.className = 'sidebar-toggle-wrapper';
-        toggleWrapper.innerHTML = `
-            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-            </button>
-        `;
-        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
-    }
-
-    var toggleBtn = document.getElementById('sidebarToggle');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', function () {
-            if (window.innerWidth <= 992) {
-                document.body.classList.toggle('sidebar-open');
-                if (overlay) overlay.classList.toggle('active');
-            } else {
-                document.body.classList.toggle('sidebar-folded');
-            }
-        });
-    }
-
-    if (overlay) {
-        overlay.addEventListener('click', function () {
-            document.body.classList.remove('sidebar-open');
-            overlay.classList.remove('active');
-        });
     }
 });
 </script>
