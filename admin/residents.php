@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -308,199 +307,357 @@ if (!$error) {
         $error = 'Unable to load residents. Please check the database structure.';
     }
 }
-
-require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 
-<style>
-.sidebar-logo {
-    display: block;
-    padding: 10px 4px 6px;
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resident Management - Home for the Aged</title>
 
-.sidebar-logo a {
-    display: block;
-}
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
 
-.sidebar-logo img {
-    display: block;
-    width: 100%;
-    max-width: 300px;
-    height: auto;
-    margin: 0 auto;
-    transform: scale(1.1);
-}
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-.residents-header {
-    background: #eaf6ee;
-    border: 1px solid #d8eadc;
-    border-radius: 14px;
-    padding: 22px 26px;
-    margin-bottom: 22px;
-}
+        body {
+            margin: 0;
+            background: #eef1ee;
+            font-family: Arial, sans-serif;
+            color: #303830;
+            display: flex;
+            min-height: 100vh;
+        }
 
-.residents-header h1 {
-    color: #17683a;
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 6px;
-}
+        /* MAIN CONTENT LAYOUT */
+        .main-content {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            padding: 20px;
+            flex-grow: 1;
+            transition: margin-left 0.3s ease;
+        }
 
-.residents-header p {
-    color: #61796a;
-    margin-bottom: 0;
-}
+        /* SIDEBAR TOGGLE BUTTON STYLES */
+        .sidebar-toggle-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 6px;
+            cursor: pointer;
+            display: inline-flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            width: 36px;
+            height: 36px;
+            margin: 12px 0;
+            transition: background 0.2s ease, border-color 0.2s ease;
+        }
 
-.residents-panel {
-    background: #fff;
-    border: 1px solid #e3eee6;
-    border-radius: 14px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 16px rgba(24,75,42,.05);
-}
+        .sidebar-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
 
-.residents-search-panel {
-    background: #f5faf6;
-}
+        .sidebar-toggle-btn .hamburger-line {
+            display: block;
+            width: 18px;
+            height: 2px;
+            background-color: #ffffff;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
 
-.resident-card {
-    background: #fff;
-    border: 1px solid #e0ebe3;
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 14px;
-}
+        .sidebar-toggle-wrapper {
+            padding-left: 15px;
+            width: 100%;
+            display: flex;
+            justify-content: flex-start;
+        }
 
-.resident-profile {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    min-width: 0;
-}
+        /* SIDEBAR OVERLAY FOR MOBILE */
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 998;
+            display: none;
+        }
 
-.resident-profile-picture {
-    width: 85px;
-    height: 85px;
-    min-width: 85px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid #e0eee4;
-    background: #f1f5f2;
-}
+        .sidebar-overlay.active {
+            display: block;
+        }
 
-.resident-profile-info {
-    min-width: 0;
-}
+        /* SIDEBAR DEFAULT & COMPACT/FOLDED BEHAVIOR */
+        .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+            width: 260px;
+            min-width: 260px;
+            transition: width 0.3s ease, transform 0.3s ease;
+            z-index: 999;
+            flex-shrink: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
 
-.resident-card h3 {
-    color: #17683a;
-    font-size: 19px;
-    font-weight: 700;
-    margin-bottom: 5px;
-}
+        /* DESKTOP FOLDED STATE */
+        @media (min-width: 993px) {
+            body.sidebar-folded .sidebar,
+            body.sidebar-folded #sidebar,
+            body.sidebar-folded .sidebar-container,
+            body.sidebar-folded aside,
+            body.sidebar-folded .app-sidebar {
+                width: 70px;
+                min-width: 70px;
+            }
 
-.resident-meta {
-    color: #66786c;
-    font-size: 13px;
-    line-height: 1.8;
-}
+            /* Hide everything except the toggle button wrapper when folded */
+            body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded .sidebar-container > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded .app-sidebar > *:not(.sidebar-toggle-wrapper) {
+                display: none !important;
+            }
 
-.resident-detail {
-    background: #f7faf8;
-    border: 1px solid #e5ede7;
-    border-radius: 9px;
-    padding: 10px;
-    min-height: 42px;
-    overflow-wrap: anywhere;
-}
+            /* Center button in the 70px bar when folded */
+            body.sidebar-folded .sidebar-toggle-wrapper {
+                display: flex !important;
+                justify-content: center !important;
+                padding-left: 0 !important;
+                width: 100% !important;
+                margin-top: 12px !important;
+            }
+        }
 
-.resident-status {
-    display: inline-block;
-    padding: 4px 9px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 700;
-    background: #e5f5e9;
-    color: #17683a;
-}
+        /* MOBILE SIDEBAR BEHAVIOR */
+        @media (max-width: 992px) {
+            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                transform: translateX(-100%);
+                width: 260px !important;
+            }
 
-.resident-status.needs_attention {
-    background: #fff1d6;
-    color: #916000;
-}
+            body.sidebar-open .sidebar,
+            body.sidebar-open #sidebar,
+            body.sidebar-open .sidebar-container,
+            body.sidebar-open aside,
+            body.sidebar-open .app-sidebar {
+                transform: translateX(0);
+            }
+        }
 
-.resident-status.discharged,
-.resident-status.archived {
-    background: #edf0f2;
-    color: #58636b;
-}
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
 
-.resident-actions {
-    display: flex;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 7px;
-    margin-top: 14px;
-}
+        .sidebar-logo a {
+            display: block;
+        }
 
-/* View, Edit, and Delete buttons */
-.btn-resident-view,
-.btn-resident-edit,
-.btn-resident-delete {
-    color: #198754;
-    background: #ffffff;
-    border: 1px solid #198754;
-    font-size: 13px;
-    padding: 5px 12px;
-    transition: 0.2s ease;
-}
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
 
-.btn-resident-view:hover,
-.btn-resident-edit:hover,
-.btn-resident-delete:hover {
-    color: #ffffff;
-    background: #198754;
-    border-color: #198754;
-}
+        .residents-header {
+            background: #eaf6ee;
+            border: 1px solid #d8eadc;
+            border-radius: 14px;
+            padding: 22px 26px;
+            margin-bottom: 22px;
+        }
 
-.btn-picture {
-    color: #17683a;
-    background: #eaf6ee;
-    border: 1px solid #b8d9c2;
-}
+        .residents-header h1 {
+            color: #17683a;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
 
-.btn-picture:hover {
-    color: #fff;
-    background: #17683a;
-}
+        .residents-header p {
+            color: #61796a;
+            margin-bottom: 0;
+        }
 
-.picture-upload-form {
-    margin-top: 12px;
-    padding: 12px;
-    background: #f5faf6;
-    border: 1px solid #e0ebe3;
-    border-radius: 9px;
-}
+        .residents-panel {
+            background: #fff;
+            border: 1px solid #e3eee6;
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 16px rgba(24,75,42,.05);
+        }
 
-.picture-upload-form input[type="file"] {
-    max-width: 100%;
-    font-size: 13px;
-}
+        .residents-search-panel {
+            background: #f5faf6;
+        }
 
-@media (max-width: 576px) {
-    .residents-header,
-    .residents-panel {
-        padding: 15px;
-    }
+        .resident-card {
+            background: #fff;
+            border: 1px solid #e0ebe3;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 14px;
+        }
 
-    .resident-profile-picture {
-        width: 68px;
-        height: 68px;
-        min-width: 68px;
-    }
-}
-</style>
+        .resident-profile {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            min-width: 0;
+        }
+
+        .resident-profile-picture {
+            width: 85px;
+            height: 85px;
+            min-width: 85px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #e0eee4;
+            background: #f1f5f2;
+        }
+
+        .resident-profile-info {
+            min-width: 0;
+        }
+
+        .resident-card h3 {
+            color: #17683a;
+            font-size: 19px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .resident-meta {
+            color: #66786c;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .resident-detail {
+            background: #f7faf8;
+            border: 1px solid #e5ede7;
+            border-radius: 9px;
+            padding: 10px;
+            min-height: 42px;
+            overflow-wrap: anywhere;
+        }
+
+        .resident-status {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            background: #e5f5e9;
+            color: #17683a;
+        }
+
+        .resident-status.needs_attention {
+            background: #fff1d6;
+            color: #916000;
+        }
+
+        .resident-status.discharged,
+        .resident-status.archived {
+            background: #edf0f2;
+            color: #58636b;
+        }
+
+        .resident-actions {
+            display: flex;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin-top: 14px;
+        }
+
+        /* View, Edit, and Delete buttons */
+        .btn-resident-view,
+        .btn-resident-edit,
+        .btn-resident-delete {
+            color: #198754;
+            background: #ffffff;
+            border: 1px solid #198754;
+            font-size: 13px;
+            padding: 5px 12px;
+            transition: 0.2s ease;
+        }
+
+        .btn-resident-view:hover,
+        .btn-resident-edit:hover,
+        .btn-resident-delete:hover {
+            color: #ffffff;
+            background: #198754;
+            border-color: #198754;
+        }
+
+        .btn-picture {
+            color: #17683a;
+            background: #eaf6ee;
+            border: 1px solid #b8d9c2;
+        }
+
+        .btn-picture:hover {
+            color: #fff;
+            background: #17683a;
+        }
+
+        .picture-upload-form {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f5faf6;
+            border: 1px solid #e0ebe3;
+            border-radius: 9px;
+        }
+
+        .picture-upload-form input[type="file"] {
+            max-width: 100%;
+            font-size: 13px;
+        }
+
+        @media (max-width: 576px) {
+            .residents-header,
+            .residents-panel {
+                padding: 15px;
+            }
+
+            .resident-profile-picture {
+                width: 68px;
+                height: 68px;
+                min-width: 68px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+
+<div class="main-content">
 
 <div class="residents-header d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
@@ -646,9 +803,9 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
                             <div class="resident-meta">
                                 Resident ID: <?= h($resident['resident_id']) ?>
-                                &nbsp;|&nbsp;
+                                 | 
                                 Room: <?= h($resident['room_number'] ?: 'Not assigned') ?>
-                                &nbsp;|&nbsp;
+                                 | 
                                 Gender: <?= h($resident['gender'] ?: 'Not specified') ?>
                             </div>
                         </div>
@@ -799,18 +956,24 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
 </div>
 
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Hamburger Toggle & Sidebar Behavior -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var sidebar = document.querySelector('.app-sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    var sidebar = document.querySelector(
+        '.sidebar, #sidebar, .sidebar-container, aside, .app-sidebar'
+    );
 
     if (!sidebar) {
         return;
     }
 
-    var oldTexts = [
-        'home for the aged',
-        'care management system'
-    ];
+    // Hide old text title and subtitle
+    var oldTexts = ['home for the aged', 'care management system'];
 
     sidebar.querySelectorAll('*').forEach(function (el) {
         if (
@@ -821,21 +984,53 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // Ensure the logo sits at the top of the sidebar
     if (!sidebar.querySelector('.sidebar-logo')) {
         var logo = document.createElement('div');
         logo.className = 'sidebar-logo';
-
         logo.innerHTML =
-            '<a href="/homefor_thetander/admin/dashboard.php">' +
-            '<img src="/homefor_thetander/images/white1.png" ' +
-            'alt="Home for the Aged">' +
+            '<a href="dashboard.php">' +
+            '<img src="../images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
             '</a>';
 
         sidebar.insertBefore(logo, sidebar.firstChild);
     }
+
+    // Insert Hamburger Toggle button at the top left, right above the logo
+    if (!sidebar.querySelector('#sidebarToggle')) {
+        var toggleWrapper = document.createElement('div');
+        toggleWrapper.className = 'sidebar-toggle-wrapper';
+        toggleWrapper.innerHTML = `
+            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+            </button>
+        `;
+        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
+    }
+
+    var toggleBtn = document.getElementById('sidebarToggle');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function () {
+            if (window.innerWidth <= 992) {
+                document.body.classList.toggle('sidebar-open');
+                if (overlay) overlay.classList.toggle('active');
+            } else {
+                document.body.classList.toggle('sidebar-folded');
+            }
+        });
+    }
+
+    if (overlay) {
+        overlay.addEventListener('click', function () {
+            document.body.classList.remove('sidebar-open');
+            overlay.classList.remove('active');
+        });
+    }
 });
 </script>
 
-</main>
 </body>
 </html>

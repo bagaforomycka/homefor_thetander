@@ -481,6 +481,126 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             background: #f3f6f3;
             color: #1d2920;
             font-family: Arial, Helvetica, sans-serif;
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* SIDEBAR TOGGLE BUTTON STYLES */
+        .sidebar-toggle-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 6px;
+            cursor: pointer;
+            display: inline-flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            width: 36px;
+            height: 36px;
+            margin: 12px 0;
+            transition: background 0.2s ease, border-color 0.2s ease;
+        }
+
+        .sidebar-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .sidebar-toggle-btn .hamburger-line {
+            display: block;
+            width: 18px;
+            height: 2px;
+            background-color: #ffffff;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-toggle-wrapper {
+            padding-left: 15px;
+            width: 100%;
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        /* SIDEBAR OVERLAY FOR MOBILE */
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 998;
+            display: none;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* SIDEBAR DEFAULT & COMPACT/FOLDED BEHAVIOR */
+        .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+            width: 260px;
+            min-width: 260px;
+            transition: width 0.3s ease, transform 0.3s ease;
+            z-index: 999;
+            flex-shrink: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* DESKTOP FOLDED STATE */
+        @media (min-width: 993px) {
+            body.sidebar-folded .sidebar,
+            body.sidebar-folded #sidebar,
+            body.sidebar-folded .sidebar-container,
+            body.sidebar-folded aside,
+            body.sidebar-folded .app-sidebar {
+                width: 70px;
+                min-width: 70px;
+            }
+
+            /* Hide everything except the toggle button wrapper when folded */
+            body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded .sidebar-container > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded .app-sidebar > *:not(.sidebar-toggle-wrapper) {
+                display: none !important;
+            }
+
+            /* Center button in the 70px bar when folded */
+            body.sidebar-folded .sidebar-toggle-wrapper {
+                display: flex !important;
+                justify-content: center !important;
+                padding-left: 0 !important;
+                width: 100% !important;
+                margin-top: 12px !important;
+            }
+        }
+
+        /* MOBILE SIDEBAR BEHAVIOR */
+        @media (max-width: 992px) {
+            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                transform: translateX(-100%);
+                width: 260px !important;
+            }
+
+            body.sidebar-open .sidebar,
+            body.sidebar-open #sidebar,
+            body.sidebar-open .sidebar-container,
+            body.sidebar-open aside,
+            body.sidebar-open .app-sidebar {
+                transform: translateX(0);
+            }
         }
 
         /* SIDEBAR LOGO (injected at top of sidebar) */
@@ -506,18 +626,18 @@ if (is_file(__DIR__ . '/caretakers.php')) {
          * IMPORTANT:
          * The shared includes/sidebar.php provides the sidebar and opens
          * <main class="app-main">.
-         * Do not define another sidebar or open a second main element here.
          */
 
         .app-main {
-            margin-left: 250px !important;
-            width: calc(100% - 250px) !important;
+            width: 100% !important;
             max-width: none !important;
             min-width: 0;
             min-height: 100vh;
             padding: 28px !important;
+            flex-grow: 1;
             box-shadow: none !important;
             overflow-x: hidden;
+            transition: margin-left 0.3s ease;
         }
 
         .page-heading {
@@ -809,12 +929,6 @@ if (is_file(__DIR__ . '/caretakers.php')) {
         }
 
         @media (max-width: 760px) {
-            .app-main {
-                margin-left: 0 !important;
-                width: 100% !important;
-                padding: 18px 12px !important;
-            }
-
             .cards {
                 grid-template-columns: 1fr;
             }
@@ -839,6 +953,8 @@ if (is_file(__DIR__ . '/caretakers.php')) {
 </head>
 
 <body>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <?php
 /*
@@ -1387,9 +1503,10 @@ require_once __DIR__ . '/../includes/sidebar.php';
     Settings changes are saved to the database.
 </p>
 
-<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<!-- Hamburger Toggle & Sidebar Behavior Script -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    var overlay = document.getElementById('sidebarOverlay');
     var sidebar = document.querySelector(
         '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
     );
@@ -1398,7 +1515,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
-    // Hide the old text title and subtitle
     var oldTexts = ['home for the aged', 'care management system'];
 
     sidebar.querySelectorAll('*').forEach(function (el) {
@@ -1410,7 +1526,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Add the logo
     if (!sidebar.querySelector('.sidebar-logo')) {
         var logo = document.createElement('div');
         logo.className = 'sidebar-logo';
@@ -1421,6 +1536,38 @@ document.addEventListener('DOMContentLoaded', function () {
             '</a>';
 
         sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+
+    if (!sidebar.querySelector('#sidebarToggle')) {
+        var toggleWrapper = document.createElement('div');
+        toggleWrapper.className = 'sidebar-toggle-wrapper';
+        toggleWrapper.innerHTML = `
+            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+            </button>
+        `;
+        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
+    }
+
+    var toggleBtn = document.getElementById('sidebarToggle');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function () {
+            if (window.innerWidth <= 992) {
+                document.body.classList.toggle('sidebar-open');
+                if (overlay) overlay.classList.toggle('active');
+            } else {
+                document.body.classList.toggle('sidebar-folded');
+            }
+        });
+    }
+
+    if (overlay) {
+        overlay.addEventListener('click', function () {
+            document.body.classList.remove('sidebar-open');
+            overlay.classList.remove('active');
+        });
     }
 });
 </script>

@@ -25,14 +25,14 @@ $isAdmin = $_SESSION['role'] === 'admin';
 
 $allowedStatuses = ['Scheduled', 'Completed', 'Cancelled'];
 
-/* Create a CSRF token for schedule actions. */
+/* Create a CSRF token for schedule actions[cite: 12]. */
 if (empty($_SESSION['schedules_csrf_token'])) {
     $_SESSION['schedules_csrf_token'] = bin2hex(random_bytes(32));
 }
 
 $csrfToken = $_SESSION['schedules_csrf_token'];
 
-/* Delete means archive. It does not permanently delete the schedule. */
+/* Delete means archive. It does not permanently delete the schedule[cite: 12]. */
 if (
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
     ($_POST['action'] ?? '') === 'delete'
@@ -82,7 +82,7 @@ if (
     }
 }
 
-/* Retrieve active schedules and their optional resident names. */
+/* Retrieve active schedules and their optional resident names[cite: 12]. */
 $sql = "
     SELECT
         s.*,
@@ -135,167 +135,324 @@ try {
     $schedules = [];
     $error = 'Unable to load schedules. Please check the schedules and residents table structure.';
 }
-
-require_once __DIR__ . '/../includes/sidebar.php';
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedules - Home for the Aged</title>
 
-<style>
-/* SIDEBAR LOGO (injected at top of sidebar) */
-.sidebar-logo {
-    display: block;
-    padding: 10px 4px 6px;
-}
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
 
-.sidebar-logo a {
-    display: block;
-}
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-.sidebar-logo img {
-    display: block;
-    width: 100%;
-    max-width: 300px;
-    height: auto;
-    margin: 0 auto;
-    transform: scale(1.1);
-}
+        body {
+            margin: 0;
+            background: #eef1ee;
+            font-family: Arial, sans-serif;
+            color: #303830;
+            display: flex;
+            min-height: 100vh;
+        }
 
-.schedule-header {
-    background: #eaf6ee;
-    border: 1px solid #d8eadc;
-    border-radius: 14px;
-    padding: 22px 26px;
-    margin-bottom: 22px;
-}
+        /* MAIN CONTENT LAYOUT */
+        .main-content, .app-main {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            padding: 20px;
+            flex-grow: 1;
+            transition: margin-left 0.3s ease;
+        }
 
-.schedule-header h1 {
-    color: #17683a;
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 6px;
-}
+        /* SIDEBAR TOGGLE BUTTON STYLES */
+        .sidebar-toggle-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 6px;
+            cursor: pointer;
+            display: inline-flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            width: 36px;
+            height: 36px;
+            margin: 12px 0;
+            transition: background 0.2s ease, border-color 0.2s ease;
+        }
 
-.schedule-header p {
-    color: #61796a;
-    margin-bottom: 0;
-}
+        .sidebar-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
 
-.schedule-panel {
-    background: #fff;
-    border: 1px solid #e3eee6;
-    border-radius: 14px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 16px rgba(24,75,42,.05);
-}
+        .sidebar-toggle-btn .hamburger-line {
+            display: block;
+            width: 18px;
+            height: 2px;
+            background-color: #ffffff;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
 
-.schedule-search {
-    background: #f5faf6;
-}
+        .sidebar-toggle-wrapper {
+            padding-left: 15px;
+            width: 100%;
+            display: flex;
+            justify-content: flex-start;
+        }
 
-.schedule-card {
-    background: #fff;
-    border: 1px solid #e0ebe3;
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 14px;
-}
+        /* SIDEBAR OVERLAY FOR MOBILE */
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 998;
+            display: none;
+        }
 
-.schedule-card h3 {
-    color: #17683a;
-    font-size: 19px;
-    font-weight: 700;
-}
+        .sidebar-overlay.active {
+            display: block;
+        }
 
-.schedule-meta {
-    color: #66786c;
-    font-size: 13px;
-    line-height: 1.8;
-}
+        /* SIDEBAR DEFAULT & COMPACT/FOLDED BEHAVIOR */
+        .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+            width: 260px;
+            min-width: 260px;
+            transition: width 0.3s ease, transform 0.3s ease;
+            z-index: 999;
+            flex-shrink: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
 
-.schedule-description {
-    background: #f7faf8;
-    border: 1px solid #e5ede7;
-    border-radius: 9px;
-    padding: 12px;
-    overflow-wrap: anywhere;
-}
+        /* DESKTOP FOLDED STATE */
+        @media (min-width: 993px) {
+            body.sidebar-folded .sidebar,
+            body.sidebar-folded #sidebar,
+            body.sidebar-folded .sidebar-container,
+            body.sidebar-folded aside,
+            body.sidebar-folded .app-sidebar {
+                width: 70px;
+                min-width: 70px;
+            }
 
-.schedule-status {
-    display: inline-block;
-    padding: 4px 9px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 700;
-}
+            /* Hide everything except the toggle button wrapper when folded */
+            body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded .sidebar-container > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded .app-sidebar > *:not(.sidebar-toggle-wrapper) {
+                display: none !important;
+            }
 
-.status-scheduled {
-    color: #17683a;
-    background: #e5f5e9;
-}
+            /* Center button in the 70px bar when folded */
+            body.sidebar-folded .sidebar-toggle-wrapper {
+                display: flex !important;
+                justify-content: center !important;
+                padding-left: 0 !important;
+                width: 100% !important;
+                margin-top: 12px !important;
+            }
+        }
 
-.status-completed {
-    color: #1553a0;
-    background: #e8f1ff;
-}
+        /* MOBILE SIDEBAR BEHAVIOR */
+        @media (max-width: 992px) {
+            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                transform: translateX(-100%);
+                width: 260px !important;
+            }
 
-.status-cancelled {
-    color: #b02a37;
-    background: #fbe9eb;
-}
+            body.sidebar-open .sidebar,
+            body.sidebar-open #sidebar,
+            body.sidebar-open .sidebar-container,
+            body.sidebar-open aside,
+            body.sidebar-open .app-sidebar {
+                transform: translateX(0);
+            }
+        }
 
-.btn-schedule-view {
-    color: #198754;
-    background: #fff;
-    border: 1px solid #198754;
-}
+        /* SIDEBAR LOGO */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+        }
 
-.btn-schedule-view:hover {
-    color: #fff;
-    background: #198754;
-}
+        .sidebar-logo a {
+            display: block;
+        }
 
-.btn-schedule-edit {
-    color: #0d6efd;
-    background: #fff;
-    border: 1px solid #0d6efd;
-}
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
 
-.btn-schedule-edit:hover {
-    color: #fff;
-    background: #0d6efd;
-}
+        .schedule-header {
+            background: #eaf6ee;
+            border: 1px solid #d8eadc;
+            border-radius: 14px;
+            padding: 22px 26px;
+            margin-bottom: 22px;
+        }
 
-.btn-schedule-delete {
-    color: #dc3545;
-    background: #fff;
-    border: 1px solid #dc3545;
-}
+        .schedule-header h1 {
+            color: #17683a;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
 
-.btn-schedule-delete:hover {
-    color: #fff;
-    background: #dc3545;
-}
+        .schedule-header p {
+            color: #61796a;
+            margin-bottom: 0;
+        }
 
-.schedule-actions {
-    display: flex;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 7px;
-    margin-top: 14px;
-}
+        .schedule-panel {
+            background: #fff;
+            border: 1px solid #e3eee6;
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 16px rgba(24,75,42,.05);
+        }
 
-.schedule-actions .btn {
-    font-size: 13px;
-    padding: 5px 10px;
-}
+        .schedule-search {
+            background: #f5faf6;
+        }
 
-@media (max-width: 576px) {
-    .schedule-header,
-    .schedule-panel {
-        padding: 15px;
-    }
-}
-</style>
+        .schedule-card {
+            background: #fff;
+            border: 1px solid #e0ebe3;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 14px;
+        }
+
+        .schedule-card h3 {
+            color: #17683a;
+            font-size: 19px;
+            font-weight: 700;
+        }
+
+        .schedule-meta {
+            color: #66786c;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .schedule-description {
+            background: #f7faf8;
+            border: 1px solid #e5ede7;
+            border-radius: 9px;
+            padding: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .schedule-status {
+            display: inline-block;
+            padding: 4px 9px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-scheduled {
+            color: #17683a;
+            background: #e5f5e9;
+        }
+
+        .status-completed {
+            color: #1553a0;
+            background: #e8f1ff;
+        }
+
+        .status-cancelled {
+            color: #b02a37;
+            background: #fbe9eb;
+        }
+
+        .btn-schedule-view {
+            color: #198754;
+            background: #fff;
+            border: 1px solid #198754;
+        }
+
+        .btn-schedule-view:hover {
+            color: #fff;
+            background: #198754;
+        }
+
+        .btn-schedule-edit {
+            color: #0d6efd;
+            background: #fff;
+            border: 1px solid #0d6efd;
+        }
+
+        .btn-schedule-edit:hover {
+            color: #fff;
+            background: #0d6efd;
+        }
+
+        .btn-schedule-delete {
+            color: #dc3545;
+            background: #fff;
+            border: 1px solid #dc3545;
+        }
+
+        .btn-schedule-delete:hover {
+            color: #fff;
+            background: #dc3545;
+        }
+
+        .schedule-actions {
+            display: flex;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin-top: 14px;
+        }
+
+        .schedule-actions .btn {
+            font-size: 13px;
+            padding: 5px 10px;
+        }
+
+        @media (max-width: 576px) {
+            .schedule-header,
+            .schedule-panel {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+
+<div class="main-content">
 
 <div class="schedule-header d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
@@ -320,7 +477,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <div class="alert alert-success">Schedule updated successfully.</div>
 <?php elseif ($success === 'archived'): ?>
     <div class="alert alert-success">
-        Schedule archived successfully. You can restore it from Archive &amp; Restore in the sidebar.
+        Schedule archived successfully. You can restore it from Archive & Restore in the sidebar.
     </div>
 <?php elseif ($success === 'notfound'): ?>
     <div class="alert alert-warning">
@@ -419,9 +576,9 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
                         <div class="schedule-meta">
                             Type: <?= h($item['schedule_type'] ?? '') ?>
-                            &nbsp;|&nbsp;
+                             | 
                             Date: <?= h($item['schedule_date'] ?? '') ?>
-                            &nbsp;|&nbsp;
+                             | 
                             Time:
                             <?= $startTime !== false ? h(date('g:i A', $startTime)) : 'Not specified' ?>
 
@@ -517,18 +674,21 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <?php endif; ?>
 </div>
 
-<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+</div>
+
+<!-- Hamburger Toggle & Sidebar Behavior -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    var overlay = document.getElementById('sidebarOverlay');
     var sidebar = document.querySelector(
-        '.sidebar, #sidebar, .sidebar-container, aside, nav'
+        '.sidebar, #sidebar, .sidebar-container, aside, .app-sidebar'
     );
 
     if (!sidebar) {
         return;
     }
 
-    // Hide the old text title and subtitle
+    // Hide old text title and subtitle
     var oldTexts = ['home for the aged', 'care management system'];
 
     sidebar.querySelectorAll('*').forEach(function (el) {
@@ -552,9 +712,43 @@ document.addEventListener('DOMContentLoaded', function () {
 
         sidebar.insertBefore(logo, sidebar.firstChild);
     }
+
+    // Insert Hamburger Toggle button at the top left, right above the logo
+    if (!sidebar.querySelector('#sidebarToggle')) {
+        var toggleWrapper = document.createElement('div');
+        toggleWrapper.className = 'sidebar-toggle-wrapper';
+        toggleWrapper.innerHTML = `
+            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+            </button>
+        `;
+        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
+    }
+
+    var toggleBtn = document.getElementById('sidebarToggle');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function () {
+            if (window.innerWidth <= 992) {
+                document.body.classList.toggle('sidebar-open');
+                if (overlay) overlay.classList.toggle('active');
+            } else {
+                document.body.classList.toggle('sidebar-folded');
+            }
+        });
+    }
+
+    if (overlay) {
+        overlay.addEventListener('click', function () {
+            document.body.classList.remove('sidebar-open');
+            overlay.classList.remove('active');
+        });
+    }
 });
 </script>
 
-</main>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>
