@@ -43,22 +43,19 @@
         
         .terms-hero p {
             color: #f2f2f2;
+             backdrop-filter: blur(10px); 
             text-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
 
-        .navbar {
-            background: #fff;
-            box-shadow: 0 2px 12px rgba(0,0,0,.06);
-        }
-
+        
         .brand-name {
-            color: var(--dark-green);
+             color: #004521;
             font-size: 1.45rem;
             font-weight: 700;
         }
 
         .brand-tagline {
-            color: #64816c;
+            color: #004521;
             font-size: .8rem;
             letter-spacing: 2px;
         }
@@ -152,7 +149,7 @@
     <div class="terms-card">
 
         <a href="index.php#login" class="btn btn-green mb-3">
-            &larr; Back to Login
+           Back to Login
         </a>
 
         <p>

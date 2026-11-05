@@ -431,7 +431,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
             <div class="col-sm-6 col-lg-3">
                 <div class="offer-card text-center">
-                    <div class="offer-icon">🏡</div>
+                    <div class="offer-icon">⾕</div>
                     <h5>Comfortable Living</h5>
                     <p class="text-secondary mb-0">
                         A welcoming environment that prioritizes
@@ -453,7 +453,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
             <div class="col-sm-6 col-lg-3">
                 <div class="offer-card text-center">
-                    <div class="offer-icon">🫱🏿‍🫲🏻</div>
+                    <div class="offer-icon">𐦂𖨆𐀪𖠋</div>
                     <h5>Dedicated Caregivers</h5>
                     <p class="text-secondary mb-0">
                         Caregiving guided by kindness, respect,
@@ -464,7 +464,7 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
 
             <div class="col-sm-6 col-lg-3">
                 <div class="offer-card text-center">
-                    <div class="offer-icon">✿</div>
+                    <div class="offer-icon">𓁇𓁋</div>
                     <h5>Activities and Well-being</h5>
                     <p class="text-secondary mb-0">
                         Opportunities for social connection,

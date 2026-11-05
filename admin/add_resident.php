@@ -3,74 +3,75 @@ session_start();
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    strtolower($_SESSION['role']) !== 'admin'
+    $_SESSION['role'] !== 'admin'
 ) {
     header('Location: ../index.php');
     exit;
 }
 
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/room_helper.php';
 
 function e($value): string
 {
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$error = '';
+$errors = [];
 
-$uploadDirectory = __DIR__ . '/uploads/residentspic/';
+$values = [
+    'resident_id' => '',
+    'first_name' => '',
+    'middle_name' => '',
+    'last_name' => '',
+    'date_of_birth' => '',
+    'gender' => '',
+    'contact_number' => '',
+    'address' => '',
+    'room_number' => '',
+    'admission_date' => date('Y-m-d'),
+    'care_level' => '',
+    'assigned_caretaker' => '',
+    'status' => 'new'
+];
 
-if (!is_dir($uploadDirectory)) {
-    if (!mkdir($uploadDirectory, 0755, true) && !is_dir($uploadDirectory)) {
-        $error = 'Unable to create the resident picture upload folder.';
-    }
-}
-
-// Load caretaker accounts.
 $caretakers = [];
 
-if ($error === '') {
-    try {
-        $stmt = $pdo->prepare("
-            SELECT id, full_name
-            FROM users
-            WHERE LOWER(role) = 'caretaker'
-            ORDER BY full_name ASC
-        ");
+try {
+    // Load caretaker accounts.
+    // This assumes users has an id, full_name, and role column.
+    $caretakerQuery = $pdo->prepare(
+        "SELECT id, full_name
+         FROM users
+         WHERE role = 'caretaker'
+         ORDER BY full_name"
+    );
+    $caretakerQuery->execute();
+    $caretakers = $caretakerQuery->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log($e->getMessage());
+    $errors[] = 'Unable to load caretakers. Check your users table columns.';
+}
 
-        $stmt->execute();
-        $caretakers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Rooms from Room Management that are Available and still have a free bed.
+$availableRooms = [];
 
-    } catch (PDOException $ex) {
-        error_log('Caretaker loading error: ' . $ex->getMessage());
-        $error = 'Unable to load caretaker accounts.';
-    }
+try {
+    $availableRooms = fetchAvailableRooms($pdo);
+} catch (Throwable $e) {
+    error_log('Unable to load rooms: ' . $e->getMessage());
+    $errors[] = 'Unable to load rooms. Check the rooms table.';
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    foreach ($values as $key => $default) {
+        if (isset($_POST[$key]) && is_string($_POST[$key])) {
+            $values[$key] = trim($_POST[$key]);
+        }
+    }
 
-    $residentId = trim($_POST['resident_id'] ?? '');
-    $firstName = trim($_POST['first_name'] ?? '');
-    $middleName = trim($_POST['middle_name'] ?? '');
-    $lastName = trim($_POST['last_name'] ?? '');
-    $dateOfBirth = trim($_POST['date_of_birth'] ?? '');
-    $gender = trim($_POST['gender'] ?? '');
-    $contactNumber = trim($_POST['contact_number'] ?? '');
-    $address = trim($_POST['address'] ?? '');
-    $roomNumber = trim($_POST['room_number'] ?? '');
-    $admissionDate = trim($_POST['admission_date'] ?? '');
-    $careLevel = trim($_POST['care_level'] ?? '');
-    $status = trim($_POST['status'] ?? 'new');
-
-    $caretakerInput = trim($_POST['assigned_caretaker'] ?? '');
-
-    $caretakerId = $caretakerInput === ''
-        ? null
-        : filter_var($caretakerInput, FILTER_VALIDATE_INT);
-
-    $profilePicture = null;
-    $uploadedFilePath = null;
-
+    $allowedGenders = ['Male', 'Female', 'Other'];
+    $allowedCareLevels = ['Low', 'Moderate', 'High'];
     $allowedStatuses = [
         'active',
         'needs_attention',
@@ -79,228 +80,219 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'archived'
     ];
 
-    $allowedCareLevels = [
-        'Low',
-        'Moderate',
-        'High'
-    ];
-
-    $allowedGenders = [
-        'Male',
-        'Female',
-        'Other'
-    ];
-
-    // Validate required information.
-    if ($residentId === '' || $firstName === '' || $lastName === '') {
-        $error = 'Please complete all required resident information.';
-    } elseif (!in_array($status, $allowedStatuses, true)) {
-        $error = 'Please select a valid resident status.';
-    } elseif ($careLevel !== '' && !in_array($careLevel, $allowedCareLevels, true)) {
-        $error = 'Please select a valid care level.';
-    } elseif ($gender !== '' && !in_array($gender, $allowedGenders, true)) {
-        $error = 'Please select a valid gender.';
-    } elseif ($caretakerInput !== '' && $caretakerId === false) {
-        $error = 'Please select a valid caretaker.';
+    if ($values['resident_id'] === '') {
+        $errors[] = 'Resident ID is required.';
     }
 
-    // Validate selected caretaker.
-    if ($error === '' && $caretakerId !== null) {
-
-        $validCaretakerIds = array_map(
-            'intval',
-            array_column($caretakers, 'id')
-        );
-
-        if (!in_array((int)$caretakerId, $validCaretakerIds, true)) {
-            $error = 'The selected caretaker account does not exist.';
-        }
+    if ($values['first_name'] === '' || $values['last_name'] === '') {
+        $errors[] = 'First name and last name are required.';
     }
 
-    // Validate dates.
-    if ($error === '' && $dateOfBirth !== '') {
-
-        $date = DateTime::createFromFormat('Y-m-d', $dateOfBirth);
-
-        if (!$date || $date->format('Y-m-d') !== $dateOfBirth) {
-            $error = 'Please enter a valid date of birth.';
-        }
-    }
-
-    if ($error === '' && $admissionDate !== '') {
-
-        $date = DateTime::createFromFormat('Y-m-d', $admissionDate);
-
-        if (!$date || $date->format('Y-m-d') !== $admissionDate) {
-            $error = 'Please enter a valid admission date.';
-        }
-    }
-
-    // Require a profile picture.
     if (
-        $error === '' &&
-        (
-            !isset($_FILES['profile_picture']) ||
-            $_FILES['profile_picture']['error'] === UPLOAD_ERR_NO_FILE
+        $values['gender'] !== '' &&
+        !in_array($values['gender'], $allowedGenders, true)
+    ) {
+        $errors[] = 'Please select a valid gender.';
+    }
+
+    if (
+        $values['care_level'] !== '' &&
+        !in_array($values['care_level'], $allowedCareLevels, true)
+    ) {
+        $errors[] = 'Please select a valid care level.';
+    }
+
+    if (!in_array($values['status'], $allowedStatuses, true)) {
+        $errors[] = 'Please select a valid status.';
+    }
+
+    foreach (['date_of_birth', 'admission_date'] as $dateField) {
+        if ($values[$dateField] !== '') {
+            $date = DateTime::createFromFormat(
+                '!Y-m-d',
+                $values[$dateField]
+            );
+
+            if (
+                !$date ||
+                $date->format('Y-m-d') !== $values[$dateField]
+            ) {
+                $errors[] = 'Please enter valid dates.';
+                break;
+            }
+        }
+    }
+
+    if (
+        $values['date_of_birth'] !== '' &&
+        $values['date_of_birth'] > date('Y-m-d')
+    ) {
+        $errors[] = 'Date of birth cannot be in the future.';
+    }
+
+    if (
+        $values['admission_date'] !== '' &&
+        $values['admission_date'] > date('Y-m-d')
+    ) {
+        $errors[] = 'Admission date cannot be in the future.';
+    }
+
+    if (strlen($values['resident_id']) > 50) {
+        $errors[] = 'Resident ID cannot exceed 50 characters.';
+    }
+
+    if (
+        $values['room_number'] !== '' &&
+        !in_array(
+            $values['room_number'],
+            array_map('strval', array_column($availableRooms, 'room_number')),
+            true
         )
     ) {
-        $error = 'Please upload a resident profile picture.';
+        $errors[] = 'Please select a room that is available.';
     }
 
-    // Upload and validate profile picture.
-    if ($error === '' && isset($_FILES['profile_picture'])) {
-
-        $file = $_FILES['profile_picture'];
-
-        if ($file['error'] !== UPLOAD_ERR_OK) {
-
-            $uploadErrors = [
-                UPLOAD_ERR_INI_SIZE => 'The picture exceeds the server upload limit.',
-                UPLOAD_ERR_FORM_SIZE => 'The picture exceeds the form upload limit.',
-                UPLOAD_ERR_PARTIAL => 'The picture was only partially uploaded.',
-                UPLOAD_ERR_NO_TMP_DIR => 'The server temporary upload folder is missing.',
-                UPLOAD_ERR_CANT_WRITE => 'The server could not save the uploaded picture.',
-                UPLOAD_ERR_EXTENSION => 'A server extension stopped the upload.'
-            ];
-
-            $error = $uploadErrors[$file['error']] ?? 'An unknown upload error occurred.';
-
-        } elseif ($file['size'] > 5 * 1024 * 1024) {
-
-            $error = 'The profile picture must not exceed 5 MB.';
-
-        } elseif (!is_uploaded_file($file['tmp_name'])) {
-
-            $error = 'The uploaded file could not be verified.';
-
-        } else {
-
-            $imageInfo = getimagesize($file['tmp_name']);
-
-            if ($imageInfo === false) {
-
-                $error = 'Please select a valid image file.';
-
-            } else {
-
-                $allowedMimeTypes = [
-                    'image/jpeg' => 'jpg',
-                    'image/png' => 'png',
-                    'image/webp' => 'webp'
-                ];
-
-                $mimeType = $imageInfo['mime'] ?? '';
-
-                if (!isset($allowedMimeTypes[$mimeType])) {
-
-                    $error = 'Only JPG, PNG, and WEBP images are allowed.';
-
-                } else {
-
-                    $extension = $allowedMimeTypes[$mimeType];
-
-                    $profilePicture = 'resident_' .
-                        bin2hex(random_bytes(12)) . '.' . $extension;
-
-                    $uploadedFilePath = $uploadDirectory . $profilePicture;
-
-                    if (!move_uploaded_file($file['tmp_name'], $uploadedFilePath)) {
-
-                        $error = 'Unable to save the profile picture. Check the upload folder permissions.';
-
-                        $profilePicture = null;
-                        $uploadedFilePath = null;
-                    }
-                }
-            }
-        }
-    }
-
-    // Insert resident information into database.
-    if ($error === '') {
-
+    if (!$errors) {
         try {
+            $check = $pdo->prepare(
+                'SELECT id FROM residents
+                 WHERE resident_id = :resident_id
+                 LIMIT 1'
+            );
 
-            $stmt = $pdo->prepare("
-                INSERT INTO residents (
-                    resident_id,
-                    first_name,
-                    middle_name,
-                    last_name,
-                    date_of_birth,
-                    gender,
-                    contact_number,
-                    address,
-                    room_number,
-                    admission_date,
-                    care_level,
-                    assigned_caretaker,
-                    status,
-                    profile_picture
-                ) VALUES (
-                    :resident_id,
-                    :first_name,
-                    :middle_name,
-                    :last_name,
-                    :date_of_birth,
-                    :gender,
-                    :contact_number,
-                    :address,
-                    :room_number,
-                    :admission_date,
-                    :care_level,
-                    :assigned_caretaker,
-                    :status,
-                    :profile_picture
-                )
-            ");
-
-            $stmt->execute([
-                'resident_id' => $residentId,
-                'first_name' => $firstName,
-                'middle_name' => $middleName !== '' ? $middleName : null,
-                'last_name' => $lastName,
-                'date_of_birth' => $dateOfBirth !== '' ? $dateOfBirth : null,
-                'gender' => $gender !== '' ? $gender : null,
-                'contact_number' => $contactNumber !== '' ? $contactNumber : null,
-                'address' => $address !== '' ? $address : null,
-                'room_number' => $roomNumber !== '' ? $roomNumber : null,
-                'admission_date' => $admissionDate !== '' ? $admissionDate : null,
-                'care_level' => $careLevel !== '' ? $careLevel : null,
-                'assigned_caretaker' => $caretakerId !== null ? (int)$caretakerId : null,
-                'status' => $status,
-                'profile_picture' => $profilePicture
+            $check->execute([
+                'resident_id' => $values['resident_id']
             ]);
 
-            header('Location: residents.php?added=1');
-            exit;
-
-        } catch (PDOException $ex) {
-
-            // Remove the uploaded image if the database insert fails.
-            if ($uploadedFilePath && is_file($uploadedFilePath)) {
-                unlink($uploadedFilePath);
-            }
-
-            error_log('Add Resident error: ' . $ex->getMessage());
-
-            if ($ex->getCode() === '23000') {
-                $error = 'This Resident ID may already exist. Please use a different ID.';
+            if ($check->fetch()) {
+                $errors[] = 'That Resident ID already exists.';
             } else {
-                $error = 'Unable to save the resident. Please check the database table structure and PHP error log.';
+                // Validate the selected caretaker ID.
+                $caretakerId = null;
+
+                if ($values['assigned_caretaker'] !== '') {
+                    if (
+                        !ctype_digit($values['assigned_caretaker']) ||
+                        !in_array(
+                            (int)$values['assigned_caretaker'],
+                            array_map(
+                                'intval',
+                                array_column($caretakers, 'id')
+                            ),
+                            true
+                        )
+                    ) {
+                        $errors[] = 'Please select a valid caretaker.';
+                    } else {
+                        $caretakerId = (int)$values['assigned_caretaker'];
+                    }
+                }
+
+                if (!$errors) {
+                    $pdo->beginTransaction();
+
+                    if ($values['room_number'] !== '') {
+                        // Lock the room so two people cannot take its last bed at once.
+                        $lockSql = 'SELECT id, status
+                                    FROM rooms
+                                    WHERE room_number = :room_number';
+
+                        if (in_array('archived_at', roomHelperColumns($pdo, 'rooms'), true)) {
+                            $lockSql .= ' AND archived_at IS NULL';
+                        }
+
+                        $lock = $pdo->prepare($lockSql . ' FOR UPDATE');
+                        $lock->execute(['room_number' => $values['room_number']]);
+                        $room = $lock->fetch(PDO::FETCH_ASSOC);
+
+                        if (
+                            !$room ||
+                            $room['status'] !== 'Available' ||
+                            countRoomOccupants($pdo, $values['room_number']) > 0
+                        ) {
+                            $pdo->rollBack();
+                            $errors[] = 'That room is no longer available. Please choose another room.';
+                        }
+                    }
+                }
+
+                if (!$errors) {
+                    $stmt = $pdo->prepare(
+                        'INSERT INTO residents (
+                            resident_id,
+                            first_name,
+                            middle_name,
+                            last_name,
+                            date_of_birth,
+                            gender,
+                            contact_number,
+                            address,
+                            room_number,
+                            admission_date,
+                            care_level,
+                            assigned_caretaker,
+                            status
+                        ) VALUES (
+                            :resident_id,
+                            :first_name,
+                            :middle_name,
+                            :last_name,
+                            :date_of_birth,
+                            :gender,
+                            :contact_number,
+                            :address,
+                            :room_number,
+                            :admission_date,
+                            :care_level,
+                            :assigned_caretaker,
+                            :status
+                        )'
+                    );
+
+                    $stmt->execute([
+                        'resident_id' => $values['resident_id'],
+                        'first_name' => $values['first_name'],
+                        'middle_name' => $values['middle_name'] ?: null,
+                        'last_name' => $values['last_name'],
+                        'date_of_birth' => $values['date_of_birth'] ?: null,
+                        'gender' => $values['gender'] ?: null,
+                        'contact_number' => $values['contact_number'] ?: null,
+                        'address' => $values['address'] ?: null,
+                        'room_number' => $values['room_number'] ?: null,
+                        'admission_date' => $values['admission_date'] ?: null,
+                        'care_level' => $values['care_level'] ?: null,
+                        'assigned_caretaker' => $caretakerId,
+                        'status' => $values['status']
+                    ]);
+
+                    // The room now shows as Occupied in Room Management.
+                    syncRoomStatus($pdo, $values['room_number']);
+
+                    $pdo->commit();
+
+                    header('Location: residents.php?added=1');
+                    exit;
+                }
+
+                // A room problem was found: refresh the list shown below.
+                $availableRooms = fetchAvailableRooms($pdo);
             }
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            error_log($e->getMessage());
+            $errors[] = 'The resident could not be saved. Check the server error log for the database error.';
         }
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <title>Add Resident | Home for the Aged</title>
 
     <link
@@ -314,6 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         body {
+<<<<<<< Updated upstream
             background: #f3f7f4;
             font-family: Arial, sans-serif;
             display: flex;
@@ -467,21 +460,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow: none !important;
             overflow-x: hidden;
             transition: margin-left 0.3s ease;
+=======
+            background: #f5f8f6;
+            color: #24352b;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow-x: hidden;
         }
 
-        .page-header {
-            background: #304f3e;
-            color: #fff;
-            padding: 28px;
-            border-radius: 0 0 15px 15px;
-            margin-bottom: 30px;
+        /* SIDEBAR LOGO (injected at top of sidebar) */
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
         }
 
-        .page-header h1 {
-            font-size: 30px;
-            margin-bottom: 8px;
+        .sidebar-logo a {
+            display: block;
         }
 
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+>>>>>>> Stashed changes
+        }
+
+        .app-main {
+            margin-left: 250px !important;
+            width: calc(100% - 250px) !important;
+            max-width: none !important;
+            min-width: 0;
+            min-height: 100vh;
+            padding: 28px !important;
+            box-shadow: none !important;
+            overflow-x: hidden;
+        }
+
+        .page-heading {
+            background: #304b3b;
+            color: white;
+            border-radius: 14px;
+            padding: 22px;
+        }
+
+<<<<<<< Updated upstream
         .page-header p {
             margin: 0;
         }
@@ -499,20 +523,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #183f29;
             font-weight: 700;
             margin-bottom: 20px;
+=======
+        .form-card {
+            background: white;
+            padding: 26px;
+            border-radius: 14px;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, .06);
+>>>>>>> Stashed changes
         }
 
         .form-label {
             font-weight: 600;
-            color: #303a33;
-            margin-bottom: 8px;
         }
 
-        .form-control,
-        .form-select {
-            min-height: 45px;
-            border-color: #dce5de;
+        .sidebar-link.active {
+            box-shadow: none !important;
+            outline: none !important;
         }
 
+<<<<<<< Updated upstream
         .form-control:focus,
         .form-select:focus {
             border-color: #43845b;
@@ -577,13 +606,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             .page-header {
                 padding: 22px;
+=======
+        @media (max-width: 760px) {
+            .app-main {
+                margin-left: 0 !important;
+                width: 100% !important;
+                padding: 18px 12px !important;
+>>>>>>> Stashed changes
             }
         }
     </style>
 </head>
-
 <body>
 
+<<<<<<< Updated upstream
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
@@ -814,11 +850,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
 
     </div>
+=======
+<?php require __DIR__ . '/../includes/sidebar.php'; ?>
+>>>>>>> Stashed changes
 
+<div class="page-heading mb-4">
+    <h1 class="h3 mb-1">Add Resident</h1>
+    <p class="mb-0">Enter the resident's details below.</p>
 </div>
 
-</main>
+<div class="form-card">
 
+<<<<<<< Updated upstream
 <!-- Hamburger Toggle & Sidebar Behavior Script -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -888,29 +931,273 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+=======
+    <?php if ($errors): ?>
+        <div class="alert alert-danger">
+            <ul class="mb-0">
+                <?php foreach ($errors as $error): ?>
+                    <li><?= e($error) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+
+    <form method="POST" action="">
+        <div class="row g-3">
+
+            <div class="col-md-4">
+                <label class="form-label" for="resident_id">Resident ID *</label>
+                <input
+                    class="form-control"
+                    id="resident_id"
+                    name="resident_id"
+                    maxlength="50"
+                    required
+                    value="<?= e($values['resident_id']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="first_name">First Name *</label>
+                <input
+                    class="form-control"
+                    id="first_name"
+                    name="first_name"
+                    maxlength="100"
+                    required
+                    value="<?= e($values['first_name']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="middle_name">Middle Name</label>
+                <input
+                    class="form-control"
+                    id="middle_name"
+                    name="middle_name"
+                    maxlength="100"
+                    value="<?= e($values['middle_name']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="last_name">Last Name *</label>
+                <input
+                    class="form-control"
+                    id="last_name"
+                    name="last_name"
+                    maxlength="100"
+                    required
+                    value="<?= e($values['last_name']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="date_of_birth">Date of Birth</label>
+                <input
+                    type="date"
+                    class="form-control"
+                    id="date_of_birth"
+                    name="date_of_birth"
+                    max="<?= date('Y-m-d') ?>"
+                    value="<?= e($values['date_of_birth']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="gender">Gender</label>
+                <select class="form-select" id="gender" name="gender">
+                    <option value="">Select gender</option>
+                    <?php foreach (['Male', 'Female', 'Other'] as $option): ?>
+                        <option
+                            value="<?= e($option) ?>"
+                            <?= $values['gender'] === $option ? 'selected' : '' ?>
+                        >
+                            <?= e($option) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="contact_number">Contact Number</label>
+                <input
+                    class="form-control"
+                    id="contact_number"
+                    name="contact_number"
+                    maxlength="30"
+                    value="<?= e($values['contact_number']) ?>"
+                >
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="room_number">Room</label>
+                <select class="form-select" id="room_number" name="room_number">
+                    <option value="">Not assigned yet</option>
+
+                    <?php foreach ($availableRooms as $room): ?>
+                        <?php $roomNo = (string)$room['room_number']; ?>
+                        <option
+                            value="<?= e($roomNo) ?>"
+                            <?= $values['room_number'] === $roomNo ? 'selected' : '' ?>
+                        >
+                            Room <?= e($roomNo) ?>
+                            &mdash; <?= e($room['room_type'] ?: 'Standard') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <?php if (!$availableRooms): ?>
+                    <div class="form-text text-danger">
+                        No rooms are available right now.
+                        <a href="rooms.php">Add or free up a room</a>
+                        in Room Management.
+                    </div>
+                <?php else: ?>
+                    <div class="form-text">
+                        Only available rooms are listed. The room shows as Occupied
+                        in Room Management once it is assigned.
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label" for="address">Address</label>
+                <textarea
+                    class="form-control"
+                    id="address"
+                    name="address"
+                    rows="2"
+                ><?= e($values['address']) ?></textarea>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="admission_date">Admission Date</label>
+                <input
+                    type="date"
+                    class="form-control"
+                    id="admission_date"
+                    name="admission_date"
+                    max="<?= date('Y-m-d') ?>"
+                    value="<?= e($values['admission_date']) ?>"
+                >
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="care_level">Care Level</label>
+                <select class="form-select" id="care_level" name="care_level">
+                    <option value="">Select care level</option>
+                    <?php foreach (['Low', 'Moderate', 'High'] as $option): ?>
+                        <option
+                            value="<?= e($option) ?>"
+                            <?= $values['care_level'] === $option ? 'selected' : '' ?>
+                        >
+                            <?= e($option) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="assigned_caretaker">
+                    Assigned Caretaker
+                </label>
+                <select
+                    class="form-select"
+                    id="assigned_caretaker"
+                    name="assigned_caretaker"
+                >
+                    <option value="">No caretaker assigned</option>
+
+                    <?php foreach ($caretakers as $caretaker): ?>
+                        <option
+                            value="<?= e($caretaker['id']) ?>"
+                            <?= (string)$values['assigned_caretaker'] ===
+                                (string)$caretaker['id'] ? 'selected' : '' ?>
+                        >
+                            <?= e($caretaker['full_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="status">Status</label>
+                <select class="form-select" id="status" name="status" required>
+                    <?php
+                    $statuses = [
+                        'new' => 'New',
+                        'active' => 'Active',
+                        'needs_attention' => 'Needs Attention',
+                        'discharged' => 'Discharged',
+                        'archived' => 'Archived'
+                    ];
+                    ?>
+
+                    <?php foreach ($statuses as $value => $label): ?>
+                        <option
+                            value="<?= e($value) ?>"
+                            <?= $values['status'] === $value ? 'selected' : '' ?>
+                        >
+                            <?= e($label) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <button type="submit" class="btn btn-success">
+                Save Resident
+            </button>
+
+            <a href="residents.php" class="btn btn-outline-secondary">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+>>>>>>> Stashed changes
 <script>
-const pictureInput = document.getElementById('profile_picture');
-const picturePreview = document.getElementById('picturePreview');
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector(
+        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
 
-pictureInput.addEventListener('change', function () {
-
-    const file = this.files[0];
-
-    if (!file) {
-        picturePreview.src = '../images/default-profile.png';
+    if (!sidebar) {
         return;
     }
 
-    if (!file.type.startsWith('image/')) {
-        alert('Please select an image file.');
-        this.value = '';
-        picturePreview.src = '../images/default-profile.png';
-        return;
-    }
+    // Hide the old text title and subtitle
+    var oldTexts = ['home for the aged', 'care management system'];
 
-    picturePreview.src = URL.createObjectURL(file);
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    // Add the logo
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
 });
 </script>
 
+</main>
 </body>
 </html>
