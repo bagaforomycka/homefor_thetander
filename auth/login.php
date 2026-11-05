@@ -69,7 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <style>
         body {
-            background: #f2f8f3;
+            background:
+                url('../assets/images/aged-care-background.jpg')
+                center center / cover no-repeat fixed;
             font-family: Arial, sans-serif;
         }
 
@@ -107,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="card login-card shadow-sm p-4 p-md-5">
 
         <div class="text-center mb-4">
-            <div class="fs-1">💚</div>
+            <div class="fs-1"></div>
             <h1 class="h3 brand">Home for the Aged</h1>
             <p class="text-secondary">Sign in to your account</p>
         </div>
