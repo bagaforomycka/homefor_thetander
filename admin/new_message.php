@@ -1,7 +1,6 @@
 <?php
 session_start();
 
-// Authentication and Role Authorization
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
     !in_array($_SESSION['role'], ['admin', 'staff'], true)
@@ -12,78 +11,40 @@ if (
 
 require_once __DIR__ . '/../config/db.php';
 
-function e($value): string {
+function e($value): string
+{
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$errors = [];
+$errorMsg = '';
 
-// Fetch Recipients List (Admin, Staff, Caretaker) excluding the current user
+// Fetch active caretakers to populate the recipient dropdown
 $recipients = [];
 try {
-    $stmtUsers = $pdo->prepare("SELECT id, full_name, role FROM users WHERE role IN ('admin', 'staff', 'caretaker') AND id != ? ORDER BY role ASC, full_name ASC");
-    $stmtUsers->execute([$_SESSION['user_id']]);
-    $recipients = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = $pdo->prepare("SELECT id, full_name, employee_id FROM caretakers WHERE archived_at IS NULL ORDER BY full_name ASC");
+    $stmt->execute();
+    $recipients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     $recipients = [];
 }
 
-// Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $recipientId = trim($_POST['recipient_id'] ?? '');
+    $recipient_id = trim($_POST['recipient_id'] ?? '');
     $subject = trim($_POST['subject'] ?? '');
-    $messageText = trim($_POST['message_text'] ?? '');
+    $body = trim($_POST['body'] ?? '');
 
-    // Form Validations
-    if (empty($recipientId)) { $errors[] = 'Please select a recipient.'; }
-    if (empty($subject)) { $errors[] = 'Subject is required.'; }
-    if (empty($messageText)) { $errors[] = 'Message content is required.'; }
-
-    // Optional File Attachment Handling
-    $attachmentPath = null;
-    if (empty($errors) && isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
-        $file = $_FILES['attachment'];
-        $fileName = $file['name'];
-        $fileTmpName = $file['tmp_name'];
-        $fileSize = $file['size'];
-        
-        $allowedExts = ['jpg', 'jpeg', 'png', 'pdf', 'docx'];
-        $maxSize = 5 * 1024 * 1024; // 5MB limit
-
-        $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-
-        if ($fileSize <= $maxSize && in_array($fileExt, $allowedExts)) {
-            $newFileName = uniqid('msg_', true) . "." . $fileExt;
-            $uploadDir = __DIR__ . "/../uploads/attachments/";
-            
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
-            }
-            
-            if (move_uploaded_file($fileTmpName, $uploadDir . $newFileName)) {
-                $attachmentPath = "uploads/attachments/" . $newFileName;
-            } else {
-                $errors[] = "Failed to upload file attachment.";
-            }
-        } else {
-            $errors[] = "Invalid attachment file type or size exceeded (Max 5MB).";
-        }
-    }
-
-    // Insert Message into Database
-    if (empty($errors)) {
+    if (empty($recipient_id) || empty($subject) || empty($body)) {
+        $errorMsg = 'Please fill in all required message fields.';
+    } else {
         try {
-            $preview = substr($messageText, 0, 100) . (strlen($messageText) > 100 ? '...' : '');
+            $sender_id = $_SESSION['user_id'] ?? 1;
+            $stmt = $pdo->prepare("INSERT INTO messages (sender_id, recipient_id, subject, body, created_at) VALUES (?, ?, ?, ?, NOW())");
+            $stmt->execute([$sender_id, $recipient_id, $subject, $body]);
             
-            $sql = "INSERT INTO messages (sender_id, recipient_id, subject, message_text, preview, attachment_path, status, date_recorded) 
-                    VALUES (?, ?, ?, ?, ?, ?, 'unread', NOW())";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$_SESSION['user_id'], $recipientId, $subject, $messageText, $preview, $attachmentPath]);
-
             header("Location: messages.php?msg=sent");
             exit;
         } catch (PDOException $e) {
-            $errors[] = 'Database error: ' . $e->getMessage();
+            $errorMsg = 'Could not send message. Please check your database structure.';
         }
     }
 }
@@ -92,22 +53,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>New Message | Home for the Aged</title>
-    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * {
-            box-sizing: border-box;
+        :root {
+            --green: #17683a;
+            --light-green: #33b960;
+            --pale-green: #edf7ef;
+            --text: #304b3b;
         }
 
         body {
+<<<<<<< Updated upstream
             margin: 0;
             background-color: #f4f8f5;
             color: #304b3b;
             font-family: Arial, Helvetica, sans-serif;
             display: flex;
             min-height: 100vh;
+=======
+            background: #f8fbf8;
+            color: var(--text);
+            font-family: Arial, sans-serif;
+>>>>>>> Stashed changes
             overflow-x: hidden;
         }
 
@@ -247,6 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transform: scale(1.1);
         }
 
+<<<<<<< Updated upstream
         /* app-main opened in sidebar.php */
         .app-main {
             width: 100% !important;
@@ -258,73 +228,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             box-shadow: none !important;
             overflow-x: hidden;
             transition: margin-left 0.3s ease;
+=======
+        .main-content {
+            margin-left: 10px;
+            padding: 24px 32px 32px 24px;
+>>>>>>> Stashed changes
         }
 
-        /* Card container styled like the Add Caretaker interface */
-        .form-container-card {
-            background: #ffffff;
+        .card {
+            border: none;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(24, 75, 42, 0.04);
-            overflow: hidden;
-            border: 1px solid #e3eee6;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .04);
         }
 
-        /* Dark Green Banner Header */
-        .card-banner-header {
-            background-color: #2d6042;
+        .card-header-custom {
+            background-color: var(--green);
             color: #ffffff;
-            padding: 14px 18px;
+            padding: 16px 20px;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            font-weight: bold;
             font-size: 1.2rem;
-            font-weight: 600;
         }
 
-        /* Section Title Styles */
-        .section-title {
-            color: #17683a;
-            font-weight: 700;
-            font-size: 0.95rem;
-            background: #edf8ef;
-            border-left: 4px solid #28a745;
-            border-bottom: 1px solid #dcecdf;
-            padding: 8px 12px;
-            margin-bottom: 14px;
+        .section-heading {
+            font-weight: bold;
+            color: var(--green);
+            font-size: 1rem;
+            margin-bottom: 12px;
+            margin-top: 10px;
         }
 
         .form-label {
             font-weight: 600;
-            color: #17683a;
-            font-size: 0.85rem;
-            margin-bottom: 4px;
-        }
-
-        .form-control, .form-select {
-            border-radius: 6px;
-            border: 1px solid #cedbd1;
-            padding: 6px 12px;
-            font-size: 13px;
-            min-height: 38px;
-        }
-
-        .form-control:focus, .form-select:focus {
-            border-color: #33b960;
-            box-shadow: 0 0 0 0.15rem rgba(51, 185, 96, 0.15);
+            color: var(--green);
+            font-size: 0.9rem;
         }
 
         .btn-success {
-            background-color: #198754;
-            border-color: #198754;
-            color: #ffffff;
-            font-weight: 600;
-            padding: 6px 18px;
-            border-radius: 6px;
-            font-size: 13px;
+            background: var(--green);
+            border-color: var(--green);
         }
 
         .btn-success:hover {
-            background-color: #157347;
-            border-color: #146c43;
+            background: #0f4b2a;
+            border-color: #0f4b2a;
         }
 
+<<<<<<< Updated upstream
         .btn-secondary {
             background-color: #ffffff;
             border-color: #87928b;
@@ -348,12 +299,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         @media (max-width: 760px) {
             .app-main {
                 padding: 10px !important;
+=======
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 18px 12px;
+>>>>>>> Stashed changes
             }
         }
     </style>
 </head>
 <body>
 
+<<<<<<< Updated upstream
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- Include Sidebar Navigation -->
@@ -370,78 +327,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?php endforeach; ?>
                     </ul>
                 </div>
+=======
+<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+
+<div class="main-content">
+    <div class="row justify-content-center">
+        <div class="col-xl-10">
+            
+            <?php if ($errorMsg !== ''): ?>
+                <div class="alert alert-danger mb-3"><?= e($errorMsg) ?></div>
+>>>>>>> Stashed changes
             <?php endif; ?>
 
-            <!-- Form Outer Card -->
-            <div class="form-container-card">
-                
-                <!-- Top Dark Green Header -->
-                <div class="card-banner-header">
+            <div class="card shadow-sm">
+                <div class="card-header-custom">
                     New Message
                 </div>
-
-                <div class="p-3 p-md-4">
+                <div class="card-body p-4">
                     <form method="POST" enctype="multipart/form-data">
                         
-                        <!-- 1. Message Details -->
-                        <div class="section-title">Message Details</div>
-                        <div class="row g-2 mb-3">
+                        <div class="section-heading">Message Details</div>
+                        <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label class="form-label">Recipient</label>
-                                <select name="recipient_id" class="form-select" required>
-                                    <option value="" disabled selected>Select Recipient...</option>
-                                    <?php 
-                                    $currentRole = '';
-                                    foreach ($recipients as $recipient): 
-                                        if ($recipient['role'] !== $currentRole) {
-                                            if ($currentRole !== '') echo "</optgroup>";
-                                            $currentRole = $recipient['role'];
-                                            echo "<optgroup label='" . ucfirst($recipient['role']) . "s'>";
-                                        }
-                                    ?>
-                                        <option value="<?= e($recipient['id']) ?>"><?= e($recipient['full_name']) ?> (<?= ucfirst(e($recipient['role'])) ?>)</option>
+                                <label for="recipient_id" class="form-label">Recipient</label>
+                                <select id="recipient_id" name="recipient_id" class="form-select" required>
+                                    <option value="" selected disabled>Select Recipient...</option>
+                                    <?php foreach ($recipients as $rec): ?>
+                                        <option value="<?= (int)$rec['id'] ?>">
+                                            <?= e($rec['full_name']) ?> (<?= e($rec['employee_id']) ?>)
+                                        </option>
                                     <?php endforeach; ?>
-                                    <?php if ($currentRole !== '') echo "</optgroup>"; ?>
                                 </select>
                             </div>
+
                             <div class="col-md-6">
-                                <label class="form-label">Subject</label>
-                                <input type="text" name="subject" class="form-control" placeholder="Enter message subject" required>
+                                <label for="subject" class="form-label">Subject</label>
+                                <input type="text" id="subject" name="subject" class="form-control" placeholder="Enter message subject" required>
                             </div>
                         </div>
 
-                        <!-- 2. Message Content -->                            
-                        <div class="row g-2 mb-3">
-                            <div class="col-12">
-                                <label class="form-label">Message Content</label>
-                                <textarea name="message_text" class="form-control" rows="4" placeholder="Type your message content here..." required></textarea>
-                            </div>
+                        <div class="section-heading">Message Body</div>
+                        <div class="mb-4">
+                            <label for="body" class="form-label">Message Content</label>
+                            <textarea id="body" name="body" class="form-control" rows="6" placeholder="Type your message content here..." required></textarea>
                         </div>
 
-                        <!-- 3. Attachment -->
-                        <div class="section-title">Attachment</div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-12">
-                                <label class="form-label">Add Attachment (Optional)</label>
-                                <input type="file" name="attachment" class="form-control">
-                                <div class="form-text small text-muted mt-1">Accepted formats: JPG, PNG, PDF, DOCX (Max size: 5MB)</div>
-                            </div>
+                        <div class="section-heading">Attachment</div>
+                        <div class="mb-4">
+                            <label for="attachment" class="form-label">Add Attachment (Optional)</label>
+                            <input type="file" id="attachment" name="attachment" class="form-control">
+                            <div class="form-text text-muted small mt-1">Accepted formats: JPG, PNG, PDF, DOCX (Max size: 5MB)</div>
                         </div>
 
-                        <!-- Bottom Action Buttons -->
-                        <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-                            <a href="messages.php" class="btn btn-secondary">Back to List</a>
-                            <button type="submit" class="btn btn-success">Send Message</button>
+                        <div class="d-flex justify-content-between align-items-center pt-2">
+                            <a href="messages.php" class="btn btn-secondary px-4">Back to List</a>
+                            <button type="submit" class="btn btn-success px-4">Send Message</button>
                         </div>
 
                     </form>
                 </div>
-
             </div>
 
         </div>
     </div>
+</div>
 
+<<<<<<< Updated upstream
     <!-- Hamburger Toggle & Sidebar Behavior Script -->
     <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -449,32 +400,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         var sidebar = document.querySelector(
             '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
         );
+=======
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+>>>>>>> Stashed changes
 
-        if (!sidebar) {
-            return;
-        }
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.querySelector('.sidebar, #sidebar, .sidebar-container, aside, nav');
+    if (!sidebar) return;
 
-        var oldTexts = ['home for the aged', 'care management system'];
-
-        sidebar.querySelectorAll('*').forEach(function (el) {
-            if (
-                el.children.length === 0 &&
-                oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-            ) {
-                el.style.display = 'none';
-            }
-        });
-
-        if (!sidebar.querySelector('.sidebar-logo')) {
-            var logo = document.createElement('div');
-            logo.className = 'sidebar-logo';
-            logo.innerHTML =
-                '<a href="/homefor_thetander/admin/dashboard.php">' +
-                '<img src="/homefor_thetander/images/white1.png" ' +
-                'alt="Home for the Aged - Care, Comfort, Dignity">' +
-                '</a>';
-
-            sidebar.insertBefore(logo, sidebar.firstChild);
+    var oldTexts = ['home for the aged', 'care management system'];
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (el.children.length === 0 && oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1) {
+            el.style.display = 'none';
         }
 
         if (!sidebar.querySelector('#sidebarToggle')) {
@@ -509,12 +447,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
         }
     });
-    </script>
 
-    <!-- sidebar.php already opened <main class="app-main">, close it here -->
-    </main>
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML = '<a href="dashboard.php"><img src="../images/white1.png" alt="Home for the Aged"></a>';
+        sidebar.insertBefore(logo, sidebar.firstChild);
+    }
+});
+</script>
 
-    <!-- Bootstrap 5 JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
