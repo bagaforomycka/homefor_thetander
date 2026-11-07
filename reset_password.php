@@ -3,7 +3,6 @@ session_start();
 require_once 'config/db.php';
 
 $error = '';
-$success = '';
 $step = isset($_SESSION['reset_step']) ? $_SESSION['reset_step'] : 1;
 
 // PHASE 1: User requests a code by typing their username
@@ -14,30 +13,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_request_code']
         $error = "Please enter your username.";
     } else {
         // Check if user exists
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE username = :username");
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = :username LIMIT 1");
         $stmt->execute(['username' => $username]);
         $user = $stmt->fetch();
 
         if ($user) {
-            // Generate a random 6-digit code
-            $code = sprintf("%06d", mt_rand(0, 999999));
-            $expiresAt = date('Y-m-d H:i:s', strtotime('+30 minutes'));
+            $userId = isset($user['id']) ? $user['id'] : (isset($user['user_id']) ? $user['user_id'] : null);
+            
+            if ($userId) {
+                // Generate a random 6-digit code
+                $code = sprintf("%06d", mt_rand(0, 999999));
+                // Set expiration: 30 minutes from now
+                $expiresAt = date('Y-m-d H:i:s', time() + (30 * 60));
 
-            // Save the code to the database
-            $stmt = $pdo->prepare("INSERT INTO password_resets (user_id, reset_code, expires_at) VALUES (:user_id, :code, :expires_at)");
-            $stmt->execute([
-                'user_id' => $user['id'],
-                'code' => $code,
-                'expires_at' => $expiresAt
-            ]);
+                // Save code to password_resets table
+                $stmt = $pdo->prepare("INSERT INTO password_resets (user_id, reset_code, expires_at, used) VALUES (:user_id, :code, :expires_at, 0)");
+                $stmt->execute([
+                    'user_id' => $userId,
+                    'code' => $code,
+                    'expires_at' => $expiresAt
+                ]);
 
-            // For testing purposes locally without email: we store it in session to show on screen
-            $_SESSION['temp_generated_code'] = $code;
-            $_SESSION['request_username'] = $username;
-            $_SESSION['reset_step'] = 1.5; // Move to screen showing the generated code
-            $step = 1.5;
+                // Store in session for testing
+                $_SESSION['temp_generated_code'] = $code;
+                $_SESSION['request_username'] = $username;
+                $_SESSION['reset_step'] = 1.5;
+                $step = 1.5;
+            } else {
+                $error = "Could not identify user ID column in database.";
+            }
         } else {
-            $error = "Username not found in the system.";
+            $error = "Username not found in the database.";
         }
     }
 }
@@ -47,27 +53,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_verify_code'])
     $username = trim($_POST['username']);
     $code = trim($_POST['reset_code']);
 
-    $stmt = $pdo->prepare("
-        SELECT u.id, pr.id AS reset_id 
-        FROM users u
-        JOIN password_resets pr ON u.id = pr.user_id
-        WHERE u.username = :username 
-          AND pr.reset_code = :code 
-          AND pr.used = 0 
-          AND pr.expires_at > NOW()
-        LIMIT 1
-    ");
-    $stmt->execute(['username' => $username, 'code' => $code]);
-    $reset_request = $stmt->fetch();
-
-    if ($reset_request) {
-        $_SESSION['reset_user_id'] = $reset_request['id'];
-        $_SESSION['reset_id'] = $reset_request['reset_id'];
-        $_SESSION['reset_step'] = 2;
-        $step = 2;
-    } else {
-        $error = "Invalid or expired code.";
+    if (empty($username) || empty($code)) {
+        $error = "Missing username or reset code.";
         $step = 1;
+    } else {
+        // Fetch matching active reset request
+        $stmt = $pdo->prepare("
+            SELECT u.id AS u_id, pr.id AS reset_id, pr.expires_at 
+            FROM users u
+            JOIN password_resets pr ON u.id = pr.user_id
+            WHERE u.username = :username 
+              AND pr.reset_code = :code 
+              AND pr.used = 0
+            ORDER BY pr.id DESC
+            LIMIT 1
+        ");
+        $stmt->execute(['username' => $username, 'code' => $code]);
+        $reset_request = $stmt->fetch();
+
+        if ($reset_request) {
+            $currentTime = time();
+            $expirationTime = strtotime($reset_request['expires_at']);
+
+            if ($expirationTime >= $currentTime) {
+                $_SESSION['reset_user_id'] = $reset_request['u_id'];
+                $_SESSION['reset_id'] = $reset_request['reset_id'];
+                $_SESSION['reset_step'] = 2;
+                $step = 2;
+            } else {
+                $error = "This code has expired. Please request a new one.";
+                $_SESSION['reset_step'] = 1;
+                $step = 1;
+            }
+        } else {
+            $error = "Invalid code or user match found.";
+            $_SESSION['reset_step'] = 1;
+            $step = 1;
+        }
     }
 }
 
@@ -82,20 +104,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_passwor
     } elseif ($new_password !== $confirm_password) {
         $error = "Passwords do not match.";
         $step = 2;
+    } elseif (!isset($_SESSION['reset_user_id'])) {
+        $error = "Session lost. Please try requesting a code again.";
+        $step = 1;
     } else {
         $hashed_password = password_hash($new_password, PASSWORD_BCRYPT);
 
-        $stmt = $pdo->prepare("UPDATE users SET password_hash = :password WHERE id = :id");
+        // Update password using 'password' column matching your database table
+        $stmt = $pdo->prepare("UPDATE users SET password = :password WHERE id = :id");
         $stmt->execute([
             'password' => $hashed_password,
             'id' => $_SESSION['reset_user_id']
         ]);
 
+        // Mark code as used
         $stmt = $pdo->prepare("UPDATE password_resets SET used = 1 WHERE id = :id");
         $stmt->execute(['id' => $_SESSION['reset_id']]);
 
-        // Clear session
-        session_unset();
+        // Clean up session
+        unset($_SESSION['temp_generated_code'], $_SESSION['request_username'], $_SESSION['reset_user_id'], $_SESSION['reset_id'], $_SESSION['reset_step']);
         $step = 3;
     }
 }
@@ -108,39 +135,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_update_passwor
     <title>Reset Password | Home for the Aged</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        
-body {
-    background:
-        linear-gradient(
-            rgba(0, 0, 0, 0.4),
-            rgba(0, 0, 0, 0.4)
-        ),
-        url('images/aged-care-background.jpg')
-        no-repeat center center fixed;
-
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
-
-    min-height: 100vh;
-    margin: 0;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-       
-.card-custom {
-    border: none;
-    border-radius: 1rem;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-    background: rgba(255, 255, 255, 0.93);
-    backdrop-filter: blur(8px);
-}
-
+        body {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card-custom {
+            border: none;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.95);
+        }
         .btn-primary-custom {
             background-color: #2ecc71;
             border-color: #2ecc71;
@@ -189,10 +197,10 @@ body {
                         </div>
                     </form>
 
-                <!-- STEP 1.5: SHOW GENERATED CODE (Simulating Admin Hand-off) -->
+                <!-- STEP 1.5: SHOW GENERATED CODE -->
                 <?php elseif ($step === 1.5): ?>
                     <div class="text-center">
-                        <div class="alert alert-success">
+                        <div class="alert alert-success py-2 mb-3">
                             <h6 class="fw-bold mb-1">Request Logged!</h6>
                             <p class="small mb-0">Provide this code to your admin or use it below:</p>
                         </div>
