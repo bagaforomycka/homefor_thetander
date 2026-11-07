@@ -62,10 +62,7 @@ if (!function_exists('sidebarLink')) {
         body {
             margin: 0;
             background:
-                linear-gradient(
-                    rgba(255, 255, 255, 0.65),
-                    rgba(255, 255, 255, 0.65)
-                ),
+               
                 url('/homefor_thetander/assets/images/aged-care-background.jpg?v=<?= (int) @filemtime(__DIR__ . '/../assets/images/aged-care-background.jpg') ?>')
                 center center / cover no-repeat fixed !important;
             color: #080c09;

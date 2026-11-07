@@ -1,1580 +1,501 @@
 <?php
-/**
- * Home for the Aged - Admin Settings
- * File: admin/settings.php
- *
- * Uses the existing shared sidebar:
- * includes/sidebar.php
- *
- * Requires config/db.php to provide a PDO connection named $pdo.
- */
+session_start();
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-if (!isset($_SESSION['user_id'], $_SESSION['role'])) {
-    header('Location: /homefor_thetander/index.php');
-    exit;
-}
-
-if (strtolower(trim((string) $_SESSION['role'])) !== 'admin') {
-    http_response_code(403);
-    exit('Access denied. Only administrators can access Settings.');
-}
-
+/* DATABASE CONNECTION */
 require_once __DIR__ . '/../config/db.php';
 
-if (!isset($pdo) || !($pdo instanceof PDO)) {
-    http_response_code(500);
-    exit('Database connection error. Ensure config/db.php creates a PDO variable named $pdo.');
-}
-
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-
-/*
-|--------------------------------------------------------------------------
-| Create Settings tables
-|--------------------------------------------------------------------------
-*/
-
-$pdo->exec("
-    CREATE TABLE IF NOT EXISTS app_settings (
-        setting_key VARCHAR(100) NOT NULL PRIMARY KEY,
-        setting_value LONGTEXT NULL,
-        updated_by VARCHAR(100) NOT NULL,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-");
-
-$pdo->exec("
-    CREATE TABLE IF NOT EXISTS settings_activity (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        user_id VARCHAR(100) NOT NULL,
-        action VARCHAR(150) NOT NULL,
-        details TEXT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_settings_activity_created (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-");
-
-if (empty($_SESSION['settings_csrf'])) {
-    $_SESSION['settings_csrf'] = bin2hex(random_bytes(32));
-}
-
-$csrf = $_SESSION['settings_csrf'];
-$currentUser = (string) $_SESSION['user_id'];
-
-$notice = '';
-$error = '';
-
-/*
-|--------------------------------------------------------------------------
-| Helper functions
-|--------------------------------------------------------------------------
-*/
-
-function settingsEscape($value): string
-{
-    return htmlspecialchars(
-        (string) ($value ?? ''),
-        ENT_QUOTES,
-        'UTF-8'
-    );
-}
-
-function settingsGet(PDO $pdo, string $key, string $default = ''): string
-{
-    $stmt = $pdo->prepare(
-        'SELECT setting_value FROM app_settings WHERE setting_key = ?'
-    );
-
-    $stmt->execute([$key]);
-    $value = $stmt->fetchColumn();
-
-    return $value === false ? $default : (string) $value;
-}
-
-function settingsSave(
-    PDO $pdo,
-    string $key,
-    string $value,
-    string $user
-): void {
-    $stmt = $pdo->prepare("
-        INSERT INTO app_settings
-            (setting_key, setting_value, updated_by)
-        VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            setting_value = VALUES(setting_value),
-            updated_by = VALUES(updated_by)
-    ");
-
-    $stmt->execute([$key, $value, $user]);
-}
-
-function settingsLog(
-    PDO $pdo,
-    string $user,
-    string $action,
-    string $details = ''
-): void {
-    $stmt = $pdo->prepare("
-        INSERT INTO settings_activity (user_id, action, details)
-        VALUES (?, ?, ?)
-    ");
-
-    $stmt->execute([$user, $action, $details]);
-}
-
-function settingsGetList(
-    PDO $pdo,
-    string $key,
-    array $default = []
-): array {
-    $raw = settingsGet($pdo, $key);
-
-    if ($raw === '') {
-        return $default;
-    }
-
-    $decoded = json_decode($raw, true);
-
-    return is_array($decoded) ? $decoded : $default;
-}
-
-function settingsRedirect(string $section): void
-{
-    header(
-        'Location: settings.php?section=' . rawurlencode($section)
-    );
+/* CHECK LOGIN */
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../index.php");
     exit;
 }
 
-/*
-|--------------------------------------------------------------------------
-| Available settings sections
-|--------------------------------------------------------------------------
-*/
+$userId = $_SESSION['user_id'];
 
-$sections = [
-    'facility'      => 'Facility Information',
-    'rooms'         => 'Room Management',
-    'care-levels'   => 'Care Levels',
-    'tasks'         => 'Task Categories',
-    'notifications' => 'Notification Settings',
-    'admins'        => 'Admin Accounts',
-    'caretakers'    => 'Caretaker Accounts',
-    'permissions'   => 'Permissions',
-    'password'      => 'Change Password',
-    'login-history' => 'Login History',
-    'activity'      => 'Account Activity',
-];
+$success = "";
+$error = "";
 
-$section = (string) ($_GET['section'] ?? '');
+/* GET USER INFORMATION */
+$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+$stmt->execute([$userId]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if ($section !== '' && !isset($sections[$section])) {
-    $section = '';
+if (!$user) {
+    die("User account not found.");
 }
 
-/*
-|--------------------------------------------------------------------------
-| Process form submissions
-|--------------------------------------------------------------------------
-*/
+/* UPDATE PROFILE */
+if (isset($_POST['update_profile'])) {
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $postedToken = (string) ($_POST['csrf_token'] ?? '');
+    $username = trim($_POST['username'] ?? '');
+    $email = trim($_POST['email'] ?? '');
 
-    if (!hash_equals($csrf, $postedToken)) {
-        $error = 'Your security token expired. Refresh the page and try again.';
+    if ($username === "" || $email === "") {
+        $error = "Please fill in all profile fields.";
+
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = "Please enter a valid email address.";
+
     } else {
-        $action = (string) ($_POST['action'] ?? '');
-
         try {
-            /*
-            | Save facility information
-            */
-            if ($action === 'save_facility') {
-                $fields = [
-                    'facility_name',
-                    'facility_address',
-                    'facility_phone',
-                    'facility_email',
-                    'facility_license',
-                    'facility_motto',
-                ];
+            $update = $pdo->prepare(
+                "UPDATE users SET username = ?, email = ? WHERE id = ?"
+            );
 
-                foreach ($fields as $key) {
-                    $value = trim((string) ($_POST[$key] ?? ''));
+            $update->execute([$username, $email, $userId]);
 
-                    if (strlen($value) > 2000) {
-                        throw new RuntimeException(
-                            'One of the facility fields is too long.'
-                        );
-                    }
+            $success = "Profile updated successfully!";
 
-                    settingsSave(
-                        $pdo,
-                        $key,
-                        $value,
-                        $currentUser
-                    );
-                }
-
-                settingsLog(
-                    $pdo,
-                    $currentUser,
-                    'Updated facility information'
-                );
-
-                $notice = 'Facility information saved successfully.';
-                $section = 'facility';
-            }
-
-            /*
-            | Save care levels, task categories, or room types
-            */
-            elseif ($action === 'save_list') {
-                $listKey = (string) ($_POST['list_key'] ?? '');
-
-                $allowedLists = [
-                    'care_levels',
-                    'task_categories',
-                    'room_types',
-                ];
-
-                if (!in_array($listKey, $allowedLists, true)) {
-                    throw new RuntimeException(
-                        'Invalid settings list.'
-                    );
-                }
-
-                $raw = trim((string) ($_POST['list_values'] ?? ''));
-
-                if (strlen($raw) > 20000) {
-                    throw new RuntimeException(
-                        'The submitted list is too long.'
-                    );
-                }
-
-                $lines = preg_split('/\R/u', $raw);
-
-                $items = array_values(array_unique(
-                    array_filter(
-                        array_map('trim', $lines ?: []),
-                        static function ($item) {
-                            return $item !== '';
-                        }
-                    )
-                ));
-
-                settingsSave(
-                    $pdo,
-                    $listKey,
-                    json_encode(
-                        $items,
-                        JSON_UNESCAPED_UNICODE |
-                        JSON_UNESCAPED_SLASHES
-                    ),
-                    $currentUser
-                );
-
-                settingsLog(
-                    $pdo,
-                    $currentUser,
-                    'Updated settings list',
-                    $listKey
-                );
-
-                $section = match ($listKey) {
-                    'care_levels' => 'care-levels',
-                    'task_categories' => 'tasks',
-                    default => 'rooms',
-                };
-
-                $notice = 'List saved successfully.';
-            }
-
-            /*
-            | Save notification preferences
-            */
-            elseif ($action === 'save_notifications') {
-                $preferences = [
-                    'email_notifications' =>
-                        isset($_POST['email_notifications']) ? '1' : '0',
-
-                    'in_app_notifications' =>
-                        isset($_POST['in_app_notifications']) ? '1' : '0',
-
-                    'schedule_reminders' =>
-                        isset($_POST['schedule_reminders']) ? '1' : '0',
-
-                    'health_alerts' =>
-                        isset($_POST['health_alerts']) ? '1' : '0',
-                ];
-
-                foreach ($preferences as $key => $value) {
-                    settingsSave(
-                        $pdo,
-                        $key,
-                        $value,
-                        $currentUser
-                    );
-                }
-
-                settingsLog(
-                    $pdo,
-                    $currentUser,
-                    'Updated notification preferences'
-                );
-
-                $notice = 'Notification preferences saved.';
-                $section = 'notifications';
-            }
-
-            /*
-            | Save permission preferences
-            |
-            | Only Admin and Caretaker are included.
-            */
-            elseif ($action === 'save_permissions') {
-                $roles = ['admin', 'caretaker'];
-
-                $permissionNames = [
-                    'residents',
-                    'health_records',
-                    'rooms',
-                    'schedules',
-                    'messages',
-                    'reports',
-                    'settings',
-                ];
-
-                $permissions = [];
-
-                foreach ($roles as $role) {
-                    foreach ($permissionNames as $permission) {
-                        $permissions[$role][$permission] =
-                            isset($_POST[$role . '_' . $permission]);
-                    }
-                }
-
-                settingsSave(
-                    $pdo,
-                    'role_permissions',
-                    json_encode($permissions),
-                    $currentUser
-                );
-
-                settingsLog(
-                    $pdo,
-                    $currentUser,
-                    'Updated permission preferences'
-                );
-
-                $notice = 'Permission preferences saved. Each module must also enforce its own access rules.';
-                $section = 'permissions';
-            }
-
-            else {
-                throw new RuntimeException(
-                    'That settings action is not available.'
-                );
-            }
-        } catch (Throwable $exception) {
-            error_log('Settings error: ' . $exception->getMessage());
-
-            $error = $exception instanceof RuntimeException
-                ? $exception->getMessage()
-                : 'Unable to save your settings. Check the database connection and try again.';
+        } catch (PDOException $e) {
+            $error = "Unable to update profile. Please check your database.";
         }
     }
 }
 
-/*
-|--------------------------------------------------------------------------
-| Load saved settings
-|--------------------------------------------------------------------------
-*/
+/* CHANGE PASSWORD */
+if (isset($_POST['change_password'])) {
 
-$facility = [];
+    $currentPassword = $_POST['current_password'] ?? '';
+    $newPassword = $_POST['new_password'] ?? '';
+    $confirmPassword = $_POST['confirm_password'] ?? '';
 
-foreach ([
-    'facility_name',
-    'facility_address',
-    'facility_phone',
-    'facility_email',
-    'facility_license',
-    'facility_motto',
-] as $key) {
-    $facility[$key] = settingsGet($pdo, $key);
+    if ($currentPassword === "" || $newPassword === "" || $confirmPassword === "") {
+        $error = "Please complete all password fields.";
+
+    } elseif ($newPassword !== $confirmPassword) {
+        $error = "New passwords do not match.";
+
+    } elseif (strlen($newPassword) < 8) {
+        $error = "Password must contain at least 8 characters.";
+
+    } elseif (!password_verify($currentPassword, $user['password'])) {
+        $error = "Your current password is incorrect.";
+
+    } else {
+        try {
+            $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+
+            $update = $pdo->prepare(
+                "UPDATE users SET password = ? WHERE id = ?"
+            );
+
+            $update->execute([$hashedPassword, $userId]);
+
+            $success = "Password changed successfully!";
+
+        } catch (PDOException $e) {
+            $error = "Unable to change password.";
+        }
+    }
 }
 
-$careLevels = settingsGetList(
-    $pdo,
-    'care_levels',
-    ['Independent living', 'Assisted living', 'Full assistance']
-);
+/* REFRESH USER INFORMATION */
+$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+$stmt->execute([$userId]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$taskCategories = settingsGetList(
-    $pdo,
-    'task_categories',
-    ['Medication', 'Meals', 'Bathing', 'Exercise', 'Appointment']
-);
-
-$roomTypes = settingsGetList(
-    $pdo,
-    'room_types',
-    ['Private', 'Shared', 'Medical']
-);
-
-$permissions = settingsGetList(
-    $pdo,
-    'role_permissions',
-    []
-);
-
-$activityRows = $pdo->query("
-    SELECT user_id, action, details, created_at
-    FROM settings_activity
-    ORDER BY id DESC
-    LIMIT 100
-")->fetchAll();
-
-/*
-|--------------------------------------------------------------------------
-| Existing module links
-|--------------------------------------------------------------------------
-*/
-
-$adminLink = '/homefor_thetander/admin/users.php';
-
-if (is_file(__DIR__ . '/admin_accounts.php')) {
-    $adminLink = '/homefor_thetander/admin/admin_accounts.php';
+/* ESCAPE OUTPUT */
+function clean($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
-
-$caretakerLink = '/homefor_thetander/admin/caretakers_staff.php';
-
-if (is_file(__DIR__ . '/caretakers.php')) {
-    $caretakerLink = '/homefor_thetander/admin/caretakers.php';
-}
-
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <title>Settings | Home for the Aged</title>
-
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            background: #f3f6f3;
-            color: #1d2920;
-            font-family: Arial, Helvetica, sans-serif;
-            display: flex;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        /* SIDEBAR TOGGLE BUTTON STYLES */
-        .sidebar-toggle-btn {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 6px;
-            padding: 6px;
-            cursor: pointer;
-            display: inline-flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 4px;
-            width: 36px;
-            height: 36px;
-            margin: 12px 0;
-            transition: background 0.2s ease, border-color 0.2s ease;
-        }
-
-        .sidebar-toggle-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
-
-        .sidebar-toggle-btn .hamburger-line {
-            display: block;
-            width: 18px;
-            height: 2px;
-            background-color: #ffffff;
-            border-radius: 2px;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar-toggle-wrapper {
-            padding-left: 15px;
-            width: 100%;
-            display: flex;
-            justify-content: flex-start;
-        }
-
-        /* SIDEBAR OVERLAY FOR MOBILE */
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 998;
-            display: none;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        /* SIDEBAR DEFAULT & COMPACT/FOLDED BEHAVIOR */
-        .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
-            width: 260px;
-            min-width: 260px;
-            transition: width 0.3s ease, transform 0.3s ease;
-            z-index: 999;
-            flex-shrink: 0;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* DESKTOP FOLDED STATE */
-        @media (min-width: 993px) {
-            body.sidebar-folded .sidebar,
-            body.sidebar-folded #sidebar,
-            body.sidebar-folded .sidebar-container,
-            body.sidebar-folded aside,
-            body.sidebar-folded .app-sidebar {
-                width: 70px;
-                min-width: 70px;
-            }
-
-            /* Hide everything except the toggle button wrapper when folded */
-            body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded .sidebar-container > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded .app-sidebar > *:not(.sidebar-toggle-wrapper) {
-                display: none !important;
-            }
-
-            /* Center button in the 70px bar when folded */
-            body.sidebar-folded .sidebar-toggle-wrapper {
-                display: flex !important;
-                justify-content: center !important;
-                padding-left: 0 !important;
-                width: 100% !important;
-                margin-top: 12px !important;
-            }
-        }
-
-        /* MOBILE SIDEBAR BEHAVIOR */
-        @media (max-width: 992px) {
-            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
-                position: fixed;
-                top: 0;
-                left: 0;
-                height: 100%;
-                transform: translateX(-100%);
-                width: 260px !important;
-            }
-
-            body.sidebar-open .sidebar,
-            body.sidebar-open #sidebar,
-            body.sidebar-open .sidebar-container,
-            body.sidebar-open aside,
-            body.sidebar-open .app-sidebar {
-                transform: translateX(0);
-            }
-        }
-
-        /* SIDEBAR LOGO (injected at top of sidebar) */
-        .sidebar-logo {
-            display: block;
-            padding: 10px 4px 6px;
-        }
-
-        .sidebar-logo a {
-            display: block;
-        }
-
-        .sidebar-logo img {
-            display: block;
-            width: 100%;
-            max-width: 300px;
-            height: auto;
-            margin: 0 auto;
-            transform: scale(1.1);
-        }
-
-        /*
-         * IMPORTANT:
-         * The shared includes/sidebar.php provides the sidebar and opens
-         * <main class="app-main">.
-         */
-
-        .app-main {
-            width: 100% !important;
-            max-width: none !important;
-            min-width: 0;
-            min-height: 100vh;
-            padding: 28px !important;
-            flex-grow: 1;
-            box-shadow: none !important;
-            overflow-x: hidden;
-            transition: margin-left 0.3s ease;
-        }
-
-        .page-heading {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .page-heading h1 {
-            margin: 0 0 8px;
-            font-size: 30px;
-            line-height: 1.2;
-            color: #163421;
-        }
-
-        .page-heading p {
-            margin: 0;
-            color: #657168;
-            line-height: 1.6;
-        }
-
-        .panel {
-            width: 100%;
-            min-width: 0;
-            background: #fff;
-            border: 1px solid #dce5de;
-            border-radius: 14px;
-            padding: 22px;
-            margin-bottom: 22px;
-            box-shadow: 0 3px 12px rgba(16, 45, 25, .045);
-        }
-
-        .panel h2 {
-            margin: 0 0 8px;
-            font-size: 21px;
-            color: #173b24;
-        }
-
-        .description {
-            margin: 0 0 18px;
-            color: #657168;
-            line-height: 1.55;
-        }
-
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
-            width: 100%;
-        }
-
-        .setting-card {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
-            min-width: 0;
-            padding: 18px;
-            background: #fff;
-            color: #20372a;
-            text-decoration: none;
-            border: 1px solid #dce5de;
-            border-radius: 12px;
-            transition: transform .15s ease,
-                        border-color .15s ease,
-                        box-shadow .15s ease;
-        }
-
-        .setting-card:hover {
-            border-color: #7aa889;
-            box-shadow: 0 5px 15px rgba(16, 45, 25, .08);
-            transform: translateY(-2px);
-        }
-
-        .setting-card .symbol {
-            font-size: 25px;
-            line-height: 1.2;
-        }
-
-        .setting-card strong {
-            font-size: 16px;
-            color: #0b5426;
-        }
-
-        .setting-card span {
-            font-size: 13px;
-            line-height: 1.5;
-            color: #657168;
-        }
-
-        .notice {
-            padding: 13px 16px;
-            border: 1px solid #a8d5b5;
-            border-radius: 9px;
-            background: #edf8ef;
-            color: #19582a;
-            margin-bottom: 18px;
-        }
-
-        .notice.error {
-            border-color: #e8b5b5;
-            background: #fff0f0;
-            color: #8b2020;
-        }
-
-        .topline {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin: 0 0 18px;
-            color: #173b24;
-        }
-
-        .back-link {
-            color: #0b5426;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        .back-link:hover {
-            text-decoration: underline;
-        }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 16px;
-        }
-
-        .field {
-            display: flex;
-            flex-direction: column;
-            gap: 7px;
-            margin-bottom: 15px;
-            min-width: 0;
-        }
-
-        .field.full {
-            grid-column: 1 / -1;
-        }
-
-        .field label {
-            font-size: 14px;
-            font-weight: 700;
-            color: #263b2c;
-        }
-
-        .field input,
-        .field textarea,
-        .field select {
-            width: 100%;
-            padding: 11px 12px;
-            border: 1px solid #cbd7ce;
-            border-radius: 8px;
-            background: #fff;
-            color: #1d2920;
-            font: inherit;
-            outline: none;
-        }
-
-        .field textarea {
-            min-height: 110px;
-            resize: vertical;
-        }
-
-        .field input:focus,
-        .field textarea:focus,
-        .field select:focus {
-            border-color: #2e8050;
-            box-shadow: 0 0 0 3px rgba(46, 128, 80, .12);
-        }
-
-        .help {
-            display: block;
-            color: #657168;
-            font-size: 12px;
-            line-height: 1.5;
-            margin-top: 8px;
-        }
-
-        .actions {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 18px;
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 11px 16px;
-            border: 1px solid #0b5426;
-            border-radius: 8px;
-            background: #0b5426;
-            color: #fff;
-            text-decoration: none;
-            font: inherit;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .btn:hover {
-            background: #063b18;
-            color: #fff;
-        }
-
-        .btn.secondary {
-            background: #fff;
-            color: #0b5426;
-        }
-
-        .btn.secondary:hover {
-            background: #eef5ef;
-        }
-
-        .check-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 13px 0;
-            border-bottom: 1px solid #edf1ed;
-            color: #263b2c;
-        }
-
-        .check-row input {
-            width: 17px;
-            height: 17px;
-            accent-color: #0b5426;
-        }
-
-        .table-wrap {
-            width: 100%;
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 560px;
-        }
-
-        th,
-        td {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid #e5ebe6;
-            font-size: 14px;
-        }
-
-        th {
-            background: #f1f6f2;
-            color: #284332;
-            font-weight: 700;
-        }
-
-        .permissions-table th,
-        .permissions-table td {
-            text-align: center;
-        }
-
-        .permissions-table th:first-child,
-        .permissions-table td:first-child {
-            text-align: left;
-        }
-
-        .permissions-table input {
-            width: 17px;
-            height: 17px;
-            accent-color: #0b5426;
-        }
-
-        /*
-         * Remove the white active-link shadow without replacing the
-         * sidebar styling from includes/sidebar.php.
-         */
-        .sidebar-link.active {
-            box-shadow: none !important;
-            outline: none !important;
-        }
-
-        @media (max-width: 1050px) {
-            .cards {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-
-        @media (max-width: 760px) {
-            .cards {
-                grid-template-columns: 1fr;
-            }
-
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .field.full {
-                grid-column: auto;
-            }
-
-            .page-heading h1 {
-                font-size: 25px;
-            }
-
-            .panel {
-                padding: 17px;
-            }
-        }
-    </style>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Settings | Home for the Aged</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #f4f8f5;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #304b3b;
+}
+
+/* MAIN CONTENT */
+
+.app-main {
+    margin-left: 250px !important;
+    width: calc(100% - 250px) !important;
+    min-height: 100vh;
+    padding: 25px !important;
+}
+
+/* PAGE HEADER */
+
+.page-header {
+    background: #edf8ef;
+    border: 1px solid #dcecdf;
+    border-radius: 12px;
+    padding: 22px;
+    margin-bottom: 22px;
+}
+
+.page-header h1 {
+    color: #17683a;
+    font-size: 25px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.page-header p {
+    color: #718275;
+    font-size: 14px;
+    margin: 0;
+}
+
+/* SETTINGS CARD */
+
+.settings-card {
+    background: #ffffff;
+    border: 1px solid #e1ebe3;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 22px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
+}
+
+.card-title {
+    color: #17683a;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.card-description {
+    color: #89958c;
+    font-size: 13px;
+    margin-bottom: 22px;
+}
+
+/* PROFILE */
+
+.profile-icon {
+    width: 75px;
+    height: 75px;
+    background: #e5f3e8;
+    color: #17683a;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    margin-bottom: 15px;
+}
+
+.form-label {
+    color: #315b40;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.form-control {
+    border: 1px solid #d4e1d7;
+    border-radius: 7px;
+    padding: 11px;
+    font-size: 14px;
+}
+
+.form-control:focus {
+    border-color: #198754;
+    box-shadow: 0 0 0 0.15rem rgba(25,135,84,0.15);
+}
+
+/* BUTTONS */
+
+.btn-save {
+    background: #198754;
+    color: white;
+    border: none;
+    border-radius: 7px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.btn-save:hover {
+    background: #146c43;
+    color: white;
+}
+
+/* SYSTEM INFORMATION */
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid #edf1ed;
+    font-size: 14px;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    color: #718275;
+}
+
+.info-value {
+    color: #17683a;
+    font-weight: 600;
+}
+
+/* ALERT */
+
+.alert {
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+/* RESPONSIVE */
+
+@media(max-width: 760px) {
+
+    .app-main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 15px !important;
+    }
+
+    .settings-card {
+        padding: 18px;
+    }
+
+}
+
+</style>
+
 </head>
 
 <body>
 
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
-
 <?php
-/*
- * This is the shared sidebar used by the other admin modules.
- * It already opens <main class="app-main">.
- */
+/* SIDEBAR */
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
 
-<header class="page-heading">
-    <div>
-        <h1>⚙ Settings</h1>
-        <p>Manage facility information, configuration, accounts, and security.</p>
-    </div>
-</header>
+<!-- PAGE HEADER -->
 
-<?php if ($notice !== ''): ?>
-    <div class="notice" role="status">
-        <?= settingsEscape($notice) ?>
-    </div>
-<?php endif; ?>
+<div class="page-header">
 
-<?php if ($error !== ''): ?>
-    <div class="notice error" role="alert">
-        <?= settingsEscape($error) ?>
-    </div>
-<?php endif; ?>
+    <h1>
+        <i class="fa-solid fa-gear"></i>
+        Settings
+    </h1>
 
-<?php if ($section === ''): ?>
+    <p>Manage your account information and security settings.</p>
 
-    <!-- SETTINGS OVERVIEW -->
+</div>
 
-    <section class="panel">
-        <h2>System Settings</h2>
-        <p class="description">
-            Configure facility information and the options used by your team.
-        </p>
+<!-- SUCCESS MESSAGE -->
 
-        <div class="cards">
+<?php if ($success !== ""): ?>
 
-            <a class="setting-card" href="settings.php?section=facility">
-                <div class="symbol">🏡</div>
-                <strong>Facility Information</strong>
-                <span>Edit the facility name, contact details, address, and registration information.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=rooms">
-                <div class="symbol">🛏️</div>
-                <strong>Room Management</strong>
-                <span>Manage room-type settings or open the existing Rooms module.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=care-levels">
-                <div class="symbol">♥</div>
-                <strong>Care Levels</strong>
-                <span>Maintain the list of care levels used by the facility.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=tasks">
-                <div class="symbol">☑</div>
-                <strong>Task Categories</strong>
-                <span>Maintain categories used to organize care tasks.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=notifications">
-                <div class="symbol">🔔</div>
-                <strong>Notification Settings</strong>
-                <span>Save preferences for alerts and reminders.</span>
-            </a>
-
-        </div>
-    </section>
-
-    <section class="panel">
-        <h2>Account Management</h2>
-        <p class="description">
-            Open the existing account modules or configure permission preferences.
-        </p>
-
-        <div class="cards">
-
-            <a class="setting-card" href="<?= settingsEscape($adminLink) ?>">
-                <div class="symbol">🛡️</div>
-                <strong>Admin Accounts</strong>
-                <span>Open the existing administrator account module.</span>
-            </a>
-
-            <a class="setting-card" href="<?= settingsEscape($caretakerLink) ?>">
-                <div class="symbol">♧</div>
-                <strong>Caretaker Accounts</strong>
-                <span>Open caretaker account management.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=permissions">
-                <div class="symbol">🔐</div>
-                <strong>Permissions</strong>
-                <span>Configure role permission preferences for Admin and Caretaker.</span>
-            </a>
-
-        </div>
-    </section>
-
-    <section class="panel">
-        <h2>Security and Activity</h2>
-        <p class="description">
-            Review account security and changes made through Settings.
-        </p>
-
-        <div class="cards">
-
-            <a class="setting-card" href="settings.php?section=password">
-                <div class="symbol">🔑</div>
-                <strong>Change Password</strong>
-                <span>View password-change information for your account.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=login-history">
-                <div class="symbol">◷</div>
-                <strong>Login History</strong>
-                <span>Review the available activity records.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=activity">
-                <div class="symbol">📋</div>
-                <strong>Account Activity</strong>
-                <span>Review changes made from this Settings page.</span>
-            </a>
-
-        </div>
-    </section>
-
-<?php else: ?>
-
-    <div class="topline">
-        <a class="back-link" href="settings.php">← All Settings</a>
-        <strong><?= settingsEscape($sections[$section]) ?></strong>
-    </div>
-
-    <?php if ($section === 'facility'): ?>
-
-        <section class="panel">
-            <h2>Facility Information</h2>
-            <p class="description">
-                Update the information saved in the application settings table.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_facility">
-
-                <div class="form-grid">
-
-                    <div class="field">
-                        <label for="facility_name">Facility Name</label>
-                        <input
-                            id="facility_name"
-                            name="facility_name"
-                            type="text"
-                            maxlength="200"
-                            value="<?= settingsEscape($facility['facility_name']) ?>"
-                            required
-                        >
-                    </div>
-
-                    <div class="field">
-                        <label for="facility_phone">Phone Number</label>
-                        <input
-                            id="facility_phone"
-                            name="facility_phone"
-                            type="tel"
-                            maxlength="100"
-                            value="<?= settingsEscape($facility['facility_phone']) ?>"
-                        >
-                    </div>
-
-                    <div class="field full">
-                        <label for="facility_address">Address</label>
-                        <textarea
-                            id="facility_address"
-                            name="facility_address"
-                            maxlength="2000"
-                        ><?= settingsEscape($facility['facility_address']) ?></textarea>
-                    </div>
-
-                    <div class="field">
-                        <label for="facility_email">Email Address</label>
-                        <input
-                            id="facility_email"
-                            name="facility_email"
-                            type="email"
-                            maxlength="200"
-                            value="<?= settingsEscape($facility['facility_email']) ?>"
-                        >
-                    </div>
-
-                    <div class="field">
-                        <label for="facility_license">License / Registration Number</label>
-                        <input
-                            id="facility_license"
-                            name="facility_license"
-                            type="text"
-                            maxlength="200"
-                            value="<?= settingsEscape($facility['facility_license']) ?>"
-                        >
-                    </div>
-
-                    <div class="field full">
-                        <label for="facility_motto">Motto / Description</label>
-                        <textarea
-                            id="facility_motto"
-                            name="facility_motto"
-                            maxlength="2000"
-                        ><?= settingsEscape($facility['facility_motto']) ?></textarea>
-                    </div>
-
-                </div>
-
-                <div class="actions">
-                    <button class="btn" type="submit">
-                        Save Facility Information
-                    </button>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'rooms'): ?>
-
-        <section class="panel">
-            <h2>Room Management</h2>
-            <p class="description">
-                Maintain room-type options. This list is separate from actual room records.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_list">
-                <input type="hidden" name="list_key" value="room_types">
-
-                <div class="field">
-                    <label for="list_values">Room Types (one per line)</label>
-                    <textarea id="list_values" name="list_values"><?= settingsEscape(implode("\n", $roomTypes)) ?></textarea>
-                    <span class="help">
-                        Saving this list does not create, edit, or delete actual room records.
-                    </span>
-                </div>
-
-                <div class="actions">
-                    <button class="btn" type="submit">Save Room Types</button>
-                    <a class="btn secondary" href="/homefor_thetander/admin/rooms.php">
-                        Open Rooms Module
-                    </a>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'care-levels' || $section === 'tasks'): ?>
-
-        <?php
-        $isCare = $section === 'care-levels';
-        $listKey = $isCare ? 'care_levels' : 'task_categories';
-        $items = $isCare ? $careLevels : $taskCategories;
-        ?>
-
-        <section class="panel">
-            <h2><?= $isCare ? 'Care Levels' : 'Task Categories' ?></h2>
-
-            <p class="description">
-                Enter one item per line. Empty lines are ignored and duplicates are removed.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_list">
-                <input type="hidden" name="list_key" value="<?= settingsEscape($listKey) ?>">
-
-                <div class="field">
-                    <label for="list_values">
-                        <?= $isCare ? 'Care Levels' : 'Task Categories' ?>
-                    </label>
-
-                    <textarea id="list_values" name="list_values" required><?= settingsEscape(implode("\n", $items)) ?></textarea>
-                </div>
-
-                <div class="actions">
-                    <button class="btn" type="submit">Save List</button>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'notifications'): ?>
-
-        <section class="panel">
-            <h2>Notification Settings</h2>
-
-            <p class="description">
-                Save your preferred notification options. Actual delivery must also be implemented in the relevant modules.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_notifications">
-
-                <?php
-                $notificationOptions = [
-                    'email_notifications' => 'Email Notifications',
-                    'in_app_notifications' => 'In-App Notifications',
-                    'schedule_reminders' => 'Schedule Reminders',
-                    'health_alerts' => 'Health Alerts',
-                ];
-                ?>
-
-                <?php foreach ($notificationOptions as $key => $label): ?>
-                    <label class="check-row">
-                        <input
-                            type="checkbox"
-                            name="<?= settingsEscape($key) ?>"
-                            value="1"
-                            <?= settingsGet($pdo, $key, '1') === '1' ? 'checked' : '' ?>
-                        >
-                        <?= settingsEscape($label) ?>
-                    </label>
-                <?php endforeach; ?>
-
-                <div class="actions">
-                    <button class="btn" type="submit">
-                        Save Notification Settings
-                    </button>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'admins' || $section === 'caretakers'): ?>
-
-        <section class="panel">
-            <h2><?= settingsEscape($sections[$section]) ?></h2>
-
-            <p class="description">
-                Open the existing account-management module to manage accounts.
-            </p>
-
-            <?php if ($section === 'admins'): ?>
-                <a class="btn" href="<?= settingsEscape($adminLink) ?>">
-                    Open Admin Accounts
-                </a>
-            <?php else: ?>
-                <a class="btn" href="<?= settingsEscape($caretakerLink) ?>">
-                    Open Caretaker Accounts
-                </a>
-            <?php endif; ?>
-        </section>
-
-    <?php elseif ($section === 'permissions'): ?>
-
-        <?php
-        $roleNames = [
-            'admin' => 'Administrator',
-            'caretaker' => 'Caretaker',
-        ];
-
-        $permissionNames = [
-            'residents' => 'Residents',
-            'health_records' => 'Health Records',
-            'rooms' => 'Rooms',
-            'schedules' => 'Schedules',
-            'messages' => 'Messages',
-            'reports' => 'Reports',
-            'settings' => 'Settings',
-        ];
-        ?>
-
-        <section class="panel">
-            <h2>Permissions</h2>
-
-            <p class="description">
-                Save permission preferences for each role. These preferences do not replace access checks in each PHP module.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_permissions">
-
-                <div class="table-wrap">
-                    <table class="permissions-table">
-                        <thead>
-                            <tr>
-                                <th>Module</th>
-
-                                <?php foreach ($roleNames as $label): ?>
-                                    <th><?= settingsEscape($label) ?></th>
-                                <?php endforeach; ?>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            <?php foreach ($permissionNames as $permission => $label): ?>
-                                <tr>
-                                    <td><?= settingsEscape($label) ?></td>
-
-                                    <?php foreach ($roleNames as $role => $roleLabel): ?>
-                                        <?php
-                                        $default = $role === 'admin'
-                                            || (
-                                                $role === 'caretaker'
-                                                && in_array(
-                                                    $permission,
-                                                    [
-                                                        'residents',
-                                                        'health_records',
-                                                        'schedules',
-                                                        'messages',
-                                                        'reports',
-                                                    ],
-                                                    true
-                                                )
-                                            );
-
-                                        $checked = isset($permissions[$role][$permission])
-                                            ? (bool) $permissions[$role][$permission]
-                                            : $default;
-                                        ?>
-
-                                        <td>
-                                            <input
-                                                type="checkbox"
-                                                name="<?= settingsEscape($role . '_' . $permission) ?>"
-                                                aria-label="<?= settingsEscape($roleLabel . ' ' . $label) ?>"
-                                                <?= $checked ? 'checked' : '' ?>
-                                            >
-                                        </td>
-                                    <?php endforeach; ?>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="actions">
-                    <button class="btn" type="submit">
-                        Save Permission Preferences
-                    </button>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'password'): ?>
-
-        <section class="panel">
-            <h2>Change Password</h2>
-
-            <p class="description">
-                Password updates must use the same password-hashing method as your login system.
-                This Settings page does not change your password until the authentication code and user-table structure are verified.
-            </p>
-
-            <p>
-                Do not store a plain-text password in the database. A safe password update needs to verify your current password and use PHP's password hashing functions.
-            </p>
-
-            <a class="btn secondary" href="/homefor_thetander/admin/dashboard.php">
-                Return to Dashboard
-            </a>
-        </section>
-
-    <?php elseif ($section === 'login-history'): ?>
-
-        <section class="panel">
-            <h2>Login History</h2>
-
-            <p class="description">
-                This page does not assume a login-history table exists. The table below displays Settings activity, not successful login events.
-            </p>
-
-            <?php if (!$activityRows): ?>
-                <p>No activity recorded yet.</p>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>User ID</th>
-                                <th>Action</th>
-                                <th>Details</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            <?php foreach ($activityRows as $row): ?>
-                                <tr>
-                                    <td><?= settingsEscape($row['user_id']) ?></td>
-                                    <td><?= settingsEscape($row['action']) ?></td>
-                                    <td><?= settingsEscape($row['details']) ?></td>
-                                    <td><?= settingsEscape($row['created_at']) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        </section>
-
-    <?php elseif ($section === 'activity'): ?>
-
-        <section class="panel">
-            <h2>Account Activity</h2>
-
-            <p class="description">
-                Review changes recorded through this Settings page.
-            </p>
-
-            <?php if (!$activityRows): ?>
-                <p>No activity recorded yet. Saving a setting creates an entry.</p>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>User ID</th>
-                                <th>Action</th>
-                                <th>Details</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            <?php foreach ($activityRows as $row): ?>
-                                <tr>
-                                    <td><?= settingsEscape($row['user_id']) ?></td>
-                                    <td><?= settingsEscape($row['action']) ?></td>
-                                    <td><?= settingsEscape($row['details']) ?></td>
-                                    <td><?= settingsEscape($row['created_at']) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
-        </section>
-
-    <?php endif; ?>
+<div class="alert alert-success">
+    <i class="fa-solid fa-circle-check"></i>
+    <?= clean($success) ?>
+</div>
 
 <?php endif; ?>
 
-<p class="help">
-    Signed in as <?= settingsEscape($currentUser) ?>.
-    Settings changes are saved to the database.
-</p>
+<!-- ERROR MESSAGE -->
 
-<!-- Hamburger Toggle & Sidebar Behavior Script -->
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var overlay = document.getElementById('sidebarOverlay');
-    var sidebar = document.querySelector(
-        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
-    );
+<?php if ($error !== ""): ?>
 
-    if (!sidebar) {
-        return;
-    }
+<div class="alert alert-danger">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <?= clean($error) ?>
+</div>
 
-    var oldTexts = ['home for the aged', 'care management system'];
+<?php endif; ?>
 
-    sidebar.querySelectorAll('*').forEach(function (el) {
-        if (
-            el.children.length === 0 &&
-            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-        ) {
-            el.style.display = 'none';
-        }
-    });
+<!-- PROFILE SETTINGS -->
 
-    if (!sidebar.querySelector('.sidebar-logo')) {
-        var logo = document.createElement('div');
-        logo.className = 'sidebar-logo';
-        logo.innerHTML =
-            '<a href="/homefor_thetander/admin/dashboard.php">' +
-            '<img src="/homefor_thetander/images/white1.png" ' +
-            'alt="Home for the Aged - Care, Comfort, Dignity">' +
-            '</a>';
+<div class="settings-card">
 
-        sidebar.insertBefore(logo, sidebar.firstChild);
-    }
+    <div class="card-title">
+        <i class="fa-solid fa-user"></i>
+        Profile Settings
+    </div>
 
-    if (!sidebar.querySelector('#sidebarToggle')) {
-        var toggleWrapper = document.createElement('div');
-        toggleWrapper.className = 'sidebar-toggle-wrapper';
-        toggleWrapper.innerHTML = `
-            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-            </button>
-        `;
-        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
-    }
+    <div class="card-description">
+        Update your personal account information.
+    </div>
 
-    var toggleBtn = document.getElementById('sidebarToggle');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', function () {
-            if (window.innerWidth <= 992) {
-                document.body.classList.toggle('sidebar-open');
-                if (overlay) overlay.classList.toggle('active');
-            } else {
-                document.body.classList.toggle('sidebar-folded');
-            }
-        });
-    }
+    <div class="profile-icon">
+        <i class="fa-solid fa-user"></i>
+    </div>
 
-    if (overlay) {
-        overlay.addEventListener('click', function () {
-            document.body.classList.remove('sidebar-open');
-            overlay.classList.remove('active');
-        });
-    }
-});
-</script>
+    <form method="POST" action="settings.php">
 
-<!-- Do not add another </main> here.
-     The shared includes/sidebar.php already opened the main element. -->
+        <div class="row">
+
+            <div class="col-md-6 mb-3">
+
+                <label class="form-label">Username</label>
+
+                <input
+                    type="text"
+                    name="username"
+                    class="form-control"
+                    value="<?= clean($user['username'] ?? '') ?>"
+                    required
+                >
+
+            </div>
+
+            <div class="col-md-6 mb-3">
+
+                <label class="form-label">Email Address</label>
+
+                <input
+                    type="email"
+                    name="email"
+                    class="form-control"
+                    value="<?= clean($user['email'] ?? '') ?>"
+                    required
+                >
+
+            </div>
+
+        </div>
+
+        <button type="submit" name="update_profile" class="btn btn-save">
+            <i class="fa-solid fa-floppy-disk"></i>
+            Save Changes
+        </button>
+
+    </form>
+
+</div>
+
+<!-- PASSWORD SETTINGS -->
+
+<div class="settings-card">
+
+    <div class="card-title">
+        <i class="fa-solid fa-lock"></i>
+        Change Password
+    </div>
+
+    <div class="card-description">
+        Update your password to keep your account secure.
+    </div>
+
+    <form method="POST" action="settings.php">
+
+        <div class="mb-3">
+
+            <label class="form-label">Current Password</label>
+
+            <input
+                type="password"
+                name="current_password"
+                class="form-control"
+                placeholder="Enter current password"
+                required
+            >
+
+        </div>
+
+        <div class="mb-3">
+
+            <label class="form-label">New Password</label>
+
+            <input
+                type="password"
+                name="new_password"
+                class="form-control"
+                placeholder="Enter new password"
+                minlength="8"
+                required
+            >
+
+        </div>
+
+        <div class="mb-3">
+
+            <label class="form-label">Confirm New Password</label>
+
+            <input
+                type="password"
+                name="confirm_password"
+                class="form-control"
+                placeholder="Confirm new password"
+                minlength="8"
+                required
+            >
+
+        </div>
+
+        <button type="submit" name="change_password" class="btn btn-save">
+            <i class="fa-solid fa-key"></i>
+            Update Password
+        </button>
+
+    </form>
+
+</div>
+
+<!-- SYSTEM INFORMATION -->
+
+<div class="settings-card">
+
+    <div class="card-title">
+        <i class="fa-solid fa-circle-info"></i>
+        System Information
+    </div>
+
+    <div class="card-description">
+        Information about the Home for the Aged system.
+    </div>
+
+    <div class="info-row">
+        <span class="info-label">System Name</span>
+        <span class="info-value">Home for the Aged</span>
+    </div>
+
+    <div class="info-row">
+        <span class="info-label">System Version</span>
+        <span class="info-value">Version 1.0</span>
+    </div>
+
+    <div class="info-row">
+        <span class="info-label">Account Role</span>
+        <span class="info-value">
+            <?= clean($_SESSION['role'] ?? 'User') ?>
+        </span>
+    </div>
+
+    <div class="info-row">
+        <span class="info-label">Account ID</span>
+        <span class="info-value">
+            <?= clean($userId) ?>
+        </span>
+    </div>
+
+</div>
 
 </main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>

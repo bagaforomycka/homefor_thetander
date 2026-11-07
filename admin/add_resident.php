@@ -307,6 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         body {
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
             background: #f3f7f4;
             font-family: Arial, sans-serif;
             display: flex;
@@ -467,6 +468,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             overflow-x: hidden;
         }
 
+=======
+            background: #f5f8f6;
+            color: #24352b;
+            font-family: Arial, Helvetica, sans-serif;
+            overflow-x: hidden;
+        }
+
+>>>>>>> Stashed changes
         /* SIDEBAR LOGO (injected at top of sidebar) */
         .sidebar-logo {
             display: block;
@@ -484,6 +493,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             height: auto;
             margin: 0 auto;
             transform: scale(1.1);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         }
 
@@ -506,6 +518,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         .page-header p {
             margin: 0;
         }
@@ -524,11 +537,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 700;
             margin-bottom: 20px;
 =======
+=======
+>>>>>>> Stashed changes
         .form-card {
             background: white;
             padding: 26px;
             border-radius: 14px;
             box-shadow: 0 3px 14px rgba(0, 0, 0, .06);
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         }
 
@@ -541,6 +559,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             outline: none !important;
         }
 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
         .form-control:focus,
         .form-select:focus {
@@ -607,11 +626,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             .page-header {
                 padding: 22px;
 =======
+=======
+>>>>>>> Stashed changes
         @media (max-width: 760px) {
             .app-main {
                 margin-left: 0 !important;
                 width: 100% !important;
                 padding: 18px 12px !important;
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
             }
         }
@@ -619,6 +643,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
@@ -853,6 +878,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 =======
 <?php require __DIR__ . '/../includes/sidebar.php'; ?>
 >>>>>>> Stashed changes
+=======
+<?php require __DIR__ . '/../includes/sidebar.php'; ?>
+>>>>>>> Stashed changes
 
 <div class="page-heading mb-4">
     <h1 class="h3 mb-1">Add Resident</h1>
@@ -862,10 +890,243 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="form-card">
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 <!-- Hamburger Toggle & Sidebar Behavior Script -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var overlay = document.getElementById('sidebarOverlay');
+=======
+    <?php if ($errors): ?>
+        <div class="alert alert-danger">
+            <ul class="mb-0">
+                <?php foreach ($errors as $error): ?>
+                    <li><?= e($error) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+
+    <form method="POST" action="">
+        <div class="row g-3">
+
+            <div class="col-md-4">
+                <label class="form-label" for="resident_id">Resident ID *</label>
+                <input
+                    class="form-control"
+                    id="resident_id"
+                    name="resident_id"
+                    maxlength="50"
+                    required
+                    value="<?= e($values['resident_id']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="first_name">First Name *</label>
+                <input
+                    class="form-control"
+                    id="first_name"
+                    name="first_name"
+                    maxlength="100"
+                    required
+                    value="<?= e($values['first_name']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="middle_name">Middle Name</label>
+                <input
+                    class="form-control"
+                    id="middle_name"
+                    name="middle_name"
+                    maxlength="100"
+                    value="<?= e($values['middle_name']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="last_name">Last Name *</label>
+                <input
+                    class="form-control"
+                    id="last_name"
+                    name="last_name"
+                    maxlength="100"
+                    required
+                    value="<?= e($values['last_name']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="date_of_birth">Date of Birth</label>
+                <input
+                    type="date"
+                    class="form-control"
+                    id="date_of_birth"
+                    name="date_of_birth"
+                    max="<?= date('Y-m-d') ?>"
+                    value="<?= e($values['date_of_birth']) ?>"
+                >
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="gender">Gender</label>
+                <select class="form-select" id="gender" name="gender">
+                    <option value="">Select gender</option>
+                    <?php foreach (['Male', 'Female', 'Other'] as $option): ?>
+                        <option
+                            value="<?= e($option) ?>"
+                            <?= $values['gender'] === $option ? 'selected' : '' ?>
+                        >
+                            <?= e($option) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="contact_number">Contact Number</label>
+                <input
+                    class="form-control"
+                    id="contact_number"
+                    name="contact_number"
+                    maxlength="30"
+                    value="<?= e($values['contact_number']) ?>"
+                >
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="room_number">Room</label>
+                <select class="form-select" id="room_number" name="room_number">
+                    <option value="">Not assigned yet</option>
+
+                    <?php foreach ($availableRooms as $room): ?>
+                        <?php $roomNo = (string)$room['room_number']; ?>
+                        <option
+                            value="<?= e($roomNo) ?>"
+                            <?= $values['room_number'] === $roomNo ? 'selected' : '' ?>
+                        >
+                            Room <?= e($roomNo) ?>
+                            &mdash; <?= e($room['room_type'] ?: 'Standard') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <?php if (!$availableRooms): ?>
+                    <div class="form-text text-danger">
+                        No rooms are available right now.
+                        <a href="rooms.php">Add or free up a room</a>
+                        in Room Management.
+                    </div>
+                <?php else: ?>
+                    <div class="form-text">
+                        Only available rooms are listed. The room shows as Occupied
+                        in Room Management once it is assigned.
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label" for="address">Address</label>
+                <textarea
+                    class="form-control"
+                    id="address"
+                    name="address"
+                    rows="2"
+                ><?= e($values['address']) ?></textarea>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="admission_date">Admission Date</label>
+                <input
+                    type="date"
+                    class="form-control"
+                    id="admission_date"
+                    name="admission_date"
+                    max="<?= date('Y-m-d') ?>"
+                    value="<?= e($values['admission_date']) ?>"
+                >
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="care_level">Care Level</label>
+                <select class="form-select" id="care_level" name="care_level">
+                    <option value="">Select care level</option>
+                    <?php foreach (['Low', 'Moderate', 'High'] as $option): ?>
+                        <option
+                            value="<?= e($option) ?>"
+                            <?= $values['care_level'] === $option ? 'selected' : '' ?>
+                        >
+                            <?= e($option) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="assigned_caretaker">
+                    Assigned Caretaker
+                </label>
+                <select
+                    class="form-select"
+                    id="assigned_caretaker"
+                    name="assigned_caretaker"
+                >
+                    <option value="">No caretaker assigned</option>
+
+                    <?php foreach ($caretakers as $caretaker): ?>
+                        <option
+                            value="<?= e($caretaker['id']) ?>"
+                            <?= (string)$values['assigned_caretaker'] ===
+                                (string)$caretaker['id'] ? 'selected' : '' ?>
+                        >
+                            <?= e($caretaker['full_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="status">Status</label>
+                <select class="form-select" id="status" name="status" required>
+                    <?php
+                    $statuses = [
+                        'new' => 'New',
+                        'active' => 'Active',
+                        'needs_attention' => 'Needs Attention',
+                        'discharged' => 'Discharged',
+                        'archived' => 'Archived'
+                    ];
+                    ?>
+
+                    <?php foreach ($statuses as $value => $label): ?>
+                        <option
+                            value="<?= e($value) ?>"
+                            <?= $values['status'] === $value ? 'selected' : '' ?>
+                        >
+                            <?= e($label) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <button type="submit" class="btn btn-success">
+                Save Resident
+            </button>
+
+            <a href="residents.php" class="btn btn-outline-secondary">
+                Cancel
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+>>>>>>> Stashed changes
     var sidebar = document.querySelector(
         '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
     );
@@ -874,6 +1135,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
+<<<<<<< Updated upstream
     var oldTexts = ['home for the aged', 'care management system'];
 
     sidebar.querySelectorAll('*').forEach(function (el) {
@@ -927,10 +1189,36 @@ document.addEventListener('DOMContentLoaded', function () {
             document.body.classList.remove('sidebar-open');
             overlay.classList.remove('active');
         });
+=======
+    // Hide the old text title and subtitle
+    var oldTexts = ['home for the aged', 'care management system'];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+    });
+
+    // Add the logo
+    if (!sidebar.querySelector('.sidebar-logo')) {
+        var logo = document.createElement('div');
+        logo.className = 'sidebar-logo';
+        logo.innerHTML =
+            '<a href="/homefor_thetander/admin/dashboard.php">' +
+            '<img src="/homefor_thetander/images/white1.png" ' +
+            'alt="Home for the Aged - Care, Comfort, Dignity">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+>>>>>>> Stashed changes
     }
 });
 </script>
 
+<<<<<<< Updated upstream
 =======
     <?php if ($errors): ?>
         <div class="alert alert-danger">
@@ -1198,6 +1486,8 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+=======
+>>>>>>> Stashed changes
 </main>
 </body>
 </html>
