@@ -28,14 +28,14 @@ function h($value): string
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
  
-/* Delete means archive. The record is not permanently deleted.[cite: 10] */
+/* Delete means archive. The record is not permanently deleted. */
 if (
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
     ($_POST['action'] ?? '') === 'archive'
 ) {
     if (!$isAdmin) {
         http_response_code(403);
-        exit('Only an administrator can delete health records[cite: 10].');
+        exit('Only an administrator can delete health records.');
     }
  
     $postedToken = $_POST['csrf_token'] ?? '';
@@ -45,7 +45,7 @@ if (
         !hash_equals($csrf, $postedToken)
     ) {
         http_response_code(403);
-        exit('Invalid security token. Refresh the page and try again[cite: 10].');
+        exit('Invalid security token. Refresh the page and try again.');
     }
  
     $recordId = filter_input(
@@ -55,7 +55,7 @@ if (
     );
  
     if (!$recordId || $recordId < 1) {
-        $error = 'Invalid health record selected[cite: 10].';
+        $error = 'Invalid health record selected.';
     } else {
         try {
             $stmt = $pdo->prepare("
@@ -72,15 +72,15 @@ if (
                 exit;
             }
  
-            $error = 'Health record not found or already archived[cite: 10].';
+            $error = 'Health record not found or already archived.';
         } catch (PDOException $e) {
             error_log('Health record archive error: ' . $e->getMessage());
-            $error = 'Unable to delete this health record. Please try again[cite: 10].';
+            $error = 'Unable to delete this health record. Please try again.';
         }
     }
 }
  
-/* Show only active records belonging to active residents[cite: 10]. */
+/* Show only active records belonging to active residents. */
 $sql = "
     SELECT
         hr.id,
@@ -101,7 +101,6 @@ $sql = "
     FROM health_records hr
     INNER JOIN residents r ON r.id = hr.resident_id
     WHERE hr.archived_at IS NULL
-      AND r.archived_at IS NULL
 ";
  
 $params = [];
@@ -145,7 +144,7 @@ try {
 } catch (PDOException $e) {
     error_log('Health records loading error: ' . $e->getMessage());
     $records = [];
-    $error = 'Unable to load health records. Please check your database tables[cite: 10].';
+    $error = 'Database Error: ' . $e->getMessage();
 }
 ?>
 <!DOCTYPE html>
@@ -560,9 +559,9 @@ try {
  
                 <div class="resident-meta">
                     Resident ID: <?= h($record['resident_code']) ?>
-                     | 
+                     | 
                     Room: <?= h($record['room_number'] ?: 'Not assigned') ?>
-                     | 
+                     | 
                     Check-up: <?= h($record['record_date']) ?>
                 </div>
  

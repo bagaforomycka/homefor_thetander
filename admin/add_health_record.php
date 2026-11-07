@@ -129,7 +129,7 @@ $residents = $pdo->query(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><= $isEdit ? 'Edit Health Record' : 'Add Health Record' ?> | Home for the Aged</title>
+    <title><?= $isEdit ? 'Edit Health Record' : 'Add Health Record' ?> | Home for the Aged</title>
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
@@ -210,7 +210,7 @@ $residents = $pdo->query(
         .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
             width: 260px;
             min-width: 260px;
-            transition: width 0.3s ease, transform 0.3s ease;
+            transition: width 0.15s ease-out, transform 0.15s ease-out !important;
             z-index: 999;
             flex-shrink: 0;
             overflow: hidden;
@@ -268,6 +268,39 @@ $residents = $pdo->query(
             }
         }
 
+        /* NO GAPS: the sidebar is fixed, and the content is offset by exactly
+           the sidebar's current width (260px open, 70px folded, 0 on mobile). */
+        body { --sidebar-w: 260px; }
+        body.sidebar-folded { --sidebar-w: 70px; }
+
+        @media (min-width: 993px) {
+            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+                position: fixed !important;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                transform: none !important;
+            }
+
+            body .content-root {
+                margin-left: var(--sidebar-w) !important;
+                transition: margin-left 0.15s ease-out;
+            }
+        }
+
+        @media (max-width: 992px) {
+            body { --sidebar-w: 0px; }
+
+            body .content-root {
+                margin-left: 0 !important;
+            }
+
+            .app-main {
+                margin: 0 !important;
+                padding: 24px !important;
+            }
+        }
+
         /* SIDEBAR LOGO */
         .sidebar-logo {
             display: block;
@@ -289,15 +322,17 @@ $residents = $pdo->query(
 
         /* app-main opened in sidebar.php */
         .app-main {
-            width: 100% !important;
+            /* The sidebar is already a flex sibling that takes its own space,
+               so the main area must not add its own left offset (that caused
+               the gap and pushed the card off the right edge). */
+            flex: 1 1 0 !important;
+            width: auto !important;
             max-width: none !important;
-            min-width: 0;
+            min-width: 0 !important;
             min-height: 100vh;
             padding: 24px !important;
-            flex-grow: 1;
             box-shadow: none !important;
             overflow-x: hidden;
-            transition: margin-left 0.3s ease;
         }
 
         .health-heading {
@@ -494,6 +529,60 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+</script>
+
+<script>
+/* Remove any leftover left margin/padding (e.g. from includes/sidebar.php wrappers)
+   so the Add Health Record card sits flush next to the sidebar. */
+(function () {
+    function closeGap() {
+        var heading = document.querySelector('.health-heading');
+        if (!heading) return;
+
+        var el = heading.parentElement;
+        var innermost = true;
+
+        /* The content wrapper is the element that sits next to the sidebar. */
+        var sidebarEl = document.querySelector(
+            '.sidebar, #sidebar, .sidebar-container, aside, .app-sidebar'
+        );
+        var contentRoot = heading.parentElement;
+        while (
+            contentRoot.parentElement &&
+            contentRoot.parentElement !== document.body &&
+            !(sidebarEl && contentRoot.parentElement.contains(sidebarEl))
+        ) {
+            contentRoot = contentRoot.parentElement;
+        }
+        contentRoot.classList.add('content-root');
+
+        while (el && el !== document.body) {
+            ['margin-left', 'margin-right', 'margin-top'].forEach(function (prop) {
+                if (prop === 'margin-left' && el === contentRoot) return;
+                el.style.setProperty(prop, '0', 'important');
+            });
+            el.style.setProperty('left', '0', 'important');
+            el.style.setProperty('top', '0', 'important');
+            el.style.setProperty('max-width', 'none', 'important');
+            el.style.setProperty('min-width', '0', 'important');
+            el.style.setProperty('transform', 'none', 'important');
+            el.style.setProperty('align-self', 'flex-start', 'important');
+            ['padding-left', 'padding-right', 'padding-top'].forEach(function (prop) {
+                el.style.setProperty(prop, innermost ? '24px' : '0', 'important');
+            });
+
+            if (el === contentRoot) {
+                el.style.setProperty('flex', '1 1 0', 'important');
+                el.style.setProperty('width', 'auto', 'important');
+            }
+            innermost = false;
+            el = el.parentElement;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', closeGap);
+    window.addEventListener('load', closeGap);
+})();
 </script>
 
 </main>
