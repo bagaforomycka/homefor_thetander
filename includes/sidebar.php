@@ -999,6 +999,13 @@ if (!function_exists('sidebarLink')) {
                 'profile.php',
                 $currentPage
             );
+
+            sidebarLink(
+                '/homefor_thetander/caretaker/archive.php',
+                'Archive & Restore',
+                'archive.php',
+                $currentPage
+            );
             ?>
 
         <?php endif; ?>

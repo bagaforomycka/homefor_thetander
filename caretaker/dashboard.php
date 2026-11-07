@@ -3,6 +3,7 @@
 session_start();
 
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/archive_helper.php';
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
@@ -76,6 +77,9 @@ try {
         ->fetchAll(PDO::FETCH_COLUMN);
 
     if (in_array('assigned_caretaker', $residentColumns, true)) {
+        archiveEnsureCaretakerTable($pdo);
+        $residentVisible = archiveResidentVisibleSql($pdo, '');
+
         $totalResidents = countRecords(
             $pdo,
             "SELECT COUNT(*)
@@ -87,8 +91,14 @@ try {
              AND (
                  status IS NULL
                  OR LOWER(status) NOT IN ('archived', 'deleted')
+             )
+             AND $residentVisible
+             AND NOT EXISTS (
+                 SELECT 1 FROM caretaker_resident_archive ca
+                 WHERE ca.resident_id = residents.id
+                   AND ca.caretaker_user_id = ?
              )",
-            [$userId, $fullName]
+            [$userId, $fullName, $userId]
         );
     }
 } catch (Throwable $e) {

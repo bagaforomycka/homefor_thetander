@@ -923,7 +923,7 @@ if (!$error) {
                             method="POST"
                             action="residents.php"
                             class="d-inline"
-                            onsubmit="return confirm('Archive this resident? You can restore the record later if your archive module supports it.');"
+                            onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');"
                         >
                             <input type="hidden" name="action" value="delete">
 
@@ -940,7 +940,7 @@ if (!$error) {
                             >
 
                             <button type="submit" class="btn btn-resident-delete">
-                                Delete
+                                Archive
                             </button>
                         </form>
 

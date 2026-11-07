@@ -1,339 +1,367 @@
 <?php
+/**
+ * HOME FOR THE AGED
+ * ADMIN ARCHIVE, RESTORE AND PERMANENT DELETE (Residents + Caretakers)
+ * File: admin/archive.php
+ *
+ * Flow:  Archive (soft delete, from Residents / Caretakers page)
+ *        -> Restore, or Delete permanently (hard delete, this page only).
+ * Only archived records can be deleted permanently.
+ * Caretakers' personal resident archives are separate and not shown here.
+ */
+
 session_start();
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    !in_array($_SESSION['role'], ['admin', 'staff'], true)
+    strtolower((string)$_SESSION['role']) !== 'admin'
 ) {
-    http_response_code(403);
-    exit('Access denied. Only administrators can manage the archive.');
+    header('Location: ../index.php');
+    exit;
 }
 
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/archive_helper.php';
 
-if (empty($_SESSION['archive_csrf'])) {
-    $_SESSION['archive_csrf'] = bin2hex(random_bytes(32));
+function h($value): string
+{
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$modules = [
-    'residents' => [
-        'label' => 'Residents',
-        'table' => 'residents',
-        'description' => 'Resident information'
-    ],
-    'health_records' => [
-        'label' => 'Health Records',
-        'table' => 'health_records',
-        'description' => 'Residents’ medical information'
-    ],
-    'rooms' => [
-        'label' => 'Rooms',
-        'table' => 'rooms',
-        'description' => 'Room information'
-    ],
-    'staff' => [
-        'label' => 'Staff',
-        'table' => 'staff',
-        'description' => 'Staff records'
-    ],
-    'caretakers' => [
-        'label' => 'Caretakers',
-        'table' => 'caretakers',
-        'description' => 'Caretaker records'
-    ],
-    'schedules' => [
-        'label' => 'Schedules',
-        'table' => 'schedules',
-        'description' => 'Scheduled activities'
-    ],
-    'scheduled_tasks' => [
-        'label' => 'Scheduled Tasks',
-        'table' => 'scheduled_tasks',
-        'description' => 'Scheduled care tasks'
-    ],
-    'reports' => [
-        'label' => 'Reports',
-        'table' => 'reports',
-        'description' => 'Report records'
-    ],
-    'messages' => [
-        'label' => 'Messages',
-        'table' => 'messages',
-        'description' => 'Message records'
-    ],
-];
-
-$selectedModule = $_GET['module'] ?? 'residents';
-
-if (!isset($modules[$selectedModule])) {
-    $selectedModule = 'residents';
+if (empty($_SESSION['admin_archive_csrf'])) {
+    $_SESSION['admin_archive_csrf'] = bin2hex(random_bytes(32));
 }
 
-$notice = '';
+$csrfToken = $_SESSION['admin_archive_csrf'];
+$tab = (($_GET['tab'] ?? 'residents') === 'caretakers') ? 'caretakers' : 'residents';
+$search = trim((string)($_GET['search'] ?? ''));
+$success = '';
 $error = '';
-$archivedRecords = [];
-$tableExists = false;
-$hasArchiveColumn = false;
-$columns = [];
-$displayColumns = [];
-
-function archiveEscape($value): string
-{
-    if ($value === null) {
-        return '';
-    }
-
-    if (is_scalar($value)) {
-        return htmlspecialchars(
-            (string) $value,
-            ENT_QUOTES,
-            'UTF-8'
-        );
-    }
-
-    return '[Data]';
-}
-
-function archiveTableExists(PDO $pdo, string $table): bool
-{
-    $stmt = $pdo->prepare("
-        SELECT COUNT(*)
-        FROM information_schema.tables
-        WHERE table_schema = DATABASE()
-          AND table_name = :table_name
-    ");
-
-    $stmt->execute(['table_name' => $table]);
-
-    return (int) $stmt->fetchColumn() > 0;
-}
-
-function archiveGetColumns(PDO $pdo, string $table): array
-{
-    $allowedTables = [
-        'residents',
-        'health_records',
-        'rooms',
-        'staff',
-        'caretakers',
-        'schedules',
-        'scheduled_tasks',
-        'reports',
-        'messages'
-    ];
-
-    if (!in_array($table, $allowedTables, true)) {
-        return [];
-    }
-
-    $stmt = $pdo->query("SHOW COLUMNS FROM `$table`");
-
-    return $stmt->fetchAll(PDO::FETCH_COLUMN);
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $postedToken = $_POST['csrf_token'] ?? '';
-
-    if (
-        !is_string($postedToken) ||
-        !hash_equals($_SESSION['archive_csrf'], $postedToken)
-    ) {
-        $error = 'Security check failed. Refresh the page and try again.';
-    } else {
-        $action = $_POST['action'] ?? '';
-        $moduleKey = $_POST['module'] ?? '';
-        $recordId = filter_var(
-            $_POST['record_id'] ?? null,
-            FILTER_VALIDATE_INT
-        );
-
-        if (
-            !isset($modules[$moduleKey]) ||
-            !$recordId ||
-            !in_array(
-                $action,
-                ['restore', 'permanent_delete'],
-                true
-            )
-        ) {
-            $error = 'Invalid archive action or record.';
-        } else {
-            $table = $modules[$moduleKey]['table'];
-
-            try {
-                if (!archiveTableExists($pdo, $table)) {
-                    throw new RuntimeException(
-                        'The database table "' . $table .
-                        '" does not exist.'
-                    );
-                }
-
-                $tableColumns = archiveGetColumns($pdo, $table);
-
-                if (!in_array('archived_at', $tableColumns, true)) {
-                    throw new RuntimeException(
-                        'The "' . $table .
-                        '" table does not have an archived_at column.'
-                    );
-                }
-
-                if ($action === 'restore') {
-                    $stmt = $pdo->prepare(
-                        "UPDATE `$table`
-                         SET archived_at = NULL
-                         WHERE id = :id
-                           AND archived_at IS NOT NULL"
-                    );
-
-                    if (!in_array('id', $tableColumns, true)) {
-                        throw new RuntimeException(
-                            'This table does not have an id column.'
-                        );
-                    }
-
-                    $stmt->execute(['id' => $recordId]);
-
-                    if ($stmt->rowCount() > 0) {
-                        header(
-                            'Location: archive.php?module=' .
-                            urlencode($moduleKey) .
-                            '&success=restored'
-                        );
-                        exit;
-                    }
-
-                    $error =
-                        'The archived record was not found, or it was already restored.';
-                }
-
-                if ($action === 'permanent_delete') {
-                    if (!in_array('id', $tableColumns, true)) {
-                        throw new RuntimeException(
-                            'This table does not have an id column.'
-                        );
-                    }
-
-                    $stmt = $pdo->prepare(
-                        "DELETE FROM `$table`
-                         WHERE id = :id
-                           AND archived_at IS NOT NULL"
-                    );
-
-                    $stmt->execute(['id' => $recordId]);
-
-                    if ($stmt->rowCount() > 0) {
-                        header(
-                            'Location: archive.php?module=' .
-                            urlencode($moduleKey) .
-                            '&success=deleted'
-                        );
-                        exit;
-                    }
-
-                    $error =
-                        'The archived record was not found, or it was already deleted.';
-                }
-            } catch (Throwable $e) {
-                error_log('Archive action error: ' . $e->getMessage());
-
-                $error = $e instanceof RuntimeException
-                    ? $e->getMessage()
-                    : 'The action could not be completed. The record may be linked to other data.';
-            }
-        }
-    }
-}
-
-$table = $modules[$selectedModule]['table'];
+$rows = [];
+$counts = ['residents' => 0, 'caretakers' => 0];
+$hasArchivedAt = false;
 
 try {
-    $tableExists = archiveTableExists($pdo, $table);
-
-    if ($tableExists) {
-        $columns = archiveGetColumns($pdo, $table);
-        $hasArchiveColumn = in_array(
-            'archived_at',
-            $columns,
-            true
-        );
-
-        if ($hasArchiveColumn) {
-            if (!in_array('id', $columns, true)) {
-                $error = 'This table has no id column, so its records cannot be managed here.';
-            } else {
-                $search = trim($_GET['search'] ?? '');
-
-                $stmt = $pdo->query(
-                    "SELECT *
-                     FROM `$table`
-                     WHERE archived_at IS NOT NULL
-                     ORDER BY archived_at DESC, id DESC
-                     LIMIT 500"
-                );
-
-                $archivedRecords = $stmt->fetchAll();
-
-                $hiddenColumns = [
-                    'password',
-                    'password_hash',
-                    'token',
-                    'reset_token',
-                    'remember_token',
-                    'verification_token'
-                ];
-
-                foreach ($columns as $column) {
-                    if (
-                        !in_array(
-                            strtolower($column),
-                            $hiddenColumns,
-                            true
-                        )
-                    ) {
-                        $displayColumns[] = $column;
-                    }
-                }
-
-                $displayColumns = array_slice(
-                    $displayColumns,
-                    0,
-                    6
-                );
-
-                if ($search !== '') {
-                    $archivedRecords = array_values(
-                        array_filter(
-                            $archivedRecords,
-                            function ($record) use (
-                                $search,
-                                $displayColumns
-                            ) {
-                                foreach ($displayColumns as $column) {
-                                    if (
-                                        isset($record[$column]) &&
-                                        stripos(
-                                            (string) $record[$column],
-                                            $search
-                                        ) !== false
-                                    ) {
-                                        return true;
-                                    }
-                                }
-
-                                return false;
-                            }
-                        )
-                    );
-                }
-            }
-        }
-    }
+    $columns = $pdo->query("SHOW COLUMNS FROM residents")->fetchAll(PDO::FETCH_COLUMN);
+    $hasArchivedAt = in_array('archived_at', $columns, true);
+    archiveEnsureCaretakerTable($pdo);
 } catch (Throwable $e) {
-    error_log('Archive loading error: ' . $e->getMessage());
-    $error = 'Unable to load archived records. Check the database configuration.';
+    error_log('Admin archive setup: ' . $e->getMessage());
+    $error = 'Unable to check the database tables.';
 }
 
-$success = $_GET['success'] ?? '';
+$residentArchived = $hasArchivedAt
+    ? "(r.status = 'archived' OR r.archived_at IS NOT NULL)"
+    : "r.status = 'archived'";
+
+/* Restore or permanently delete. */
+if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $submittedToken = $_POST['csrf_token'] ?? '';
+
+    if (!is_string($submittedToken) || !hash_equals($csrfToken, $submittedToken)) {
+        http_response_code(403);
+        exit('Invalid security token. Please refresh the page.');
+    }
+
+    $action = ($_POST['action'] ?? '') === 'purge' ? 'purge' : 'restore';
+    $type = ($_POST['type'] ?? '') === 'caretaker' ? 'caretaker' : 'resident';
+    $recordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
+    $postTab = $type === 'caretaker' ? 'caretakers' : 'residents';
+
+    if (!$recordId || $recordId < 1) {
+        $error = 'Invalid record selected.';
+    } else {
+        try {
+
+            /* ---------- RESTORE ---------- */
+            if ($action === 'restore' && $type === 'resident') {
+
+                $set = $hasArchivedAt
+                    ? "r.status = 'active', r.archived_at = NULL"
+                    : "r.status = 'active'";
+
+                $stmt = $pdo->prepare("
+                    UPDATE residents r
+                    SET $set
+                    WHERE r.id = :id
+                      AND $residentArchived
+                ");
+                $stmt->execute(['id' => $recordId]);
+
+                if ($stmt->rowCount() > 0) {
+                    header('Location: archive.php?tab=residents&restored=1');
+                    exit;
+                }
+                $error = 'Record not found or not archived.';
+            }
+
+            if ($action === 'restore' && $type === 'caretaker') {
+
+                $pdo->beginTransaction();
+
+                $find = $pdo->prepare("
+                    SELECT username, status
+                    FROM caretakers
+                    WHERE id = :id AND archived_at IS NOT NULL
+                    LIMIT 1
+                ");
+                $find->execute(['id' => $recordId]);
+                $caretaker = $find->fetch(PDO::FETCH_ASSOC);
+
+                if (!$caretaker) {
+                    $pdo->rollBack();
+                    $error = 'Record not found or not archived.';
+                } else {
+                    $pdo->prepare("
+                        UPDATE caretakers SET archived_at = NULL WHERE id = :id
+                    ")->execute(['id' => $recordId]);
+
+                    /* Re-enable login to match the employment status. */
+                    $pdo->prepare("
+                        UPDATE users
+                        SET status = :status
+                        WHERE username = :username AND role = 'caretaker'
+                    ")->execute([
+                        'status' => ($caretaker['status'] === 'Active') ? 'active' : 'inactive',
+                        'username' => $caretaker['username']
+                    ]);
+
+                    $pdo->commit();
+                    header('Location: archive.php?tab=caretakers&restored=1');
+                    exit;
+                }
+            }
+
+            /* ---------- PERMANENT DELETE (archived records only) ---------- */
+            if ($action === 'purge' && $type === 'resident') {
+
+                $pdo->beginTransaction();
+
+                $find = $pdo->prepare("
+                    SELECT r.id, r.profile_picture
+                    FROM residents r
+                    WHERE r.id = :id AND $residentArchived
+                    LIMIT 1
+                    FOR UPDATE
+                ");
+                $find->execute(['id' => $recordId]);
+                $resident = $find->fetch(PDO::FETCH_ASSOC);
+
+                if (!$resident) {
+                    $pdo->rollBack();
+                    $error = 'Only archived residents can be permanently deleted.';
+                } else {
+                    /* Records that belong to this resident. */
+                    foreach ([
+                        'health_records' => 'resident_id',
+                        'schedules' => 'resident_id',
+                        'caretaker_resident_archive' => 'resident_id'
+                    ] as $table => $column) {
+                        $pdo->prepare("DELETE FROM `$table` WHERE `$column` = :id")
+                            ->execute(['id' => $recordId]);
+                    }
+
+                    $pdo->prepare("DELETE FROM residents WHERE id = :id")
+                        ->execute(['id' => $recordId]);
+
+                    /* Remove the uploaded picture if nobody else uses it. */
+                    $pictureFile = '';
+                    $picture = basename(trim((string)($resident['profile_picture'] ?? '')));
+
+                    if ($picture !== '') {
+                        $inUse = $pdo->prepare(
+                            "SELECT COUNT(*) FROM residents WHERE profile_picture = :p"
+                        );
+                        $inUse->execute(['p' => $resident['profile_picture']]);
+
+                        if ((int)$inUse->fetchColumn() === 0) {
+                            $pictureFile = __DIR__ . '/uploads/residentspic/' . $picture;
+                        }
+                    }
+
+                    $pdo->commit();
+
+                    if ($pictureFile !== '' && is_file($pictureFile)) {
+                        @unlink($pictureFile);
+                    }
+                    header('Location: archive.php?tab=residents&deleted=1');
+                    exit;
+                }
+            }
+
+            if ($action === 'purge' && $type === 'caretaker') {
+
+                $pdo->beginTransaction();
+
+                $find = $pdo->prepare("
+                    SELECT id, username
+                    FROM caretakers
+                    WHERE id = :id AND archived_at IS NOT NULL
+                    LIMIT 1
+                    FOR UPDATE
+                ");
+                $find->execute(['id' => $recordId]);
+                $caretaker = $find->fetch(PDO::FETCH_ASSOC);
+
+                if (!$caretaker) {
+                    $pdo->rollBack();
+                    $error = 'Only archived caretakers can be permanently deleted.';
+                } else {
+                    $userFind = $pdo->prepare("
+                        SELECT id FROM users
+                        WHERE username = :username AND role = 'caretaker'
+                        LIMIT 1
+                    ");
+                    $userFind->execute(['username' => $caretaker['username']]);
+                    $userId = (int)$userFind->fetchColumn();
+
+                    if ($userId > 0) {
+                        /* Residents stay; they just become unassigned. */
+                        $pdo->prepare("
+                            UPDATE residents
+                            SET assigned_caretaker = NULL
+                            WHERE assigned_caretaker = :uid
+                        ")->execute(['uid' => $userId]);
+
+                        $pdo->prepare("
+                            DELETE FROM caretaker_resident_archive
+                            WHERE caretaker_user_id = :uid
+                        ")->execute(['uid' => $userId]);
+
+                        try {
+                            $pdo->prepare("DELETE FROM password_resets WHERE user_id = :uid")
+                                ->execute(['uid' => $userId]);
+                        } catch (Throwable $ignored) {
+                            /* Table may not exist on this install. */
+                        }
+
+                        $pdo->prepare("DELETE FROM users WHERE id = :uid AND role = 'caretaker'")
+                            ->execute(['uid' => $userId]);
+                    }
+
+                    $pdo->prepare("DELETE FROM caretakers WHERE id = :id")
+                        ->execute(['id' => $recordId]);
+
+                    $pdo->commit();
+                    header('Location: archive.php?tab=caretakers&deleted=1');
+                    exit;
+                }
+            }
+
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('Admin archive action error: ' . $e->getMessage());
+            $error = $action === 'purge'
+                ? 'Unable to permanently delete this record. Other records may still depend on it.'
+                : 'Unable to restore the selected record.';
+        }
+    }
+
+    $tab = $postTab;
+}
+
+if (isset($_GET['restored'])) {
+    $success = $tab === 'caretakers'
+        ? 'Caretaker restored to the Caretakers list and their login re-enabled.'
+        : 'Resident restored. Their status is now Active.';
+} elseif (isset($_GET['deleted'])) {
+    $success = $tab === 'caretakers'
+        ? 'Caretaker permanently deleted. Their residents are now unassigned.'
+        : 'Resident permanently deleted, including their health records and schedules.';
+}
+
+/* Tab counts. */
+if (!$error || $_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $counts['residents'] = (int)$pdo
+            ->query("SELECT COUNT(*) FROM residents r WHERE $residentArchived")
+            ->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('Admin archive resident count: ' . $e->getMessage());
+    }
+
+    try {
+        $counts['caretakers'] = (int)$pdo
+            ->query("SELECT COUNT(*) FROM caretakers WHERE archived_at IS NOT NULL")
+            ->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('Admin archive caretaker count: ' . $e->getMessage());
+    }
+}
+
+/* Load the active tab's archived records. */
+try {
+    $params = [];
+
+    if ($tab === 'caretakers') {
+
+        $sql = "
+            SELECT id, employee_id, full_name, contact, position, shift,
+                   status, archived_at
+            FROM caretakers
+            WHERE archived_at IS NOT NULL
+        ";
+
+        if ($search !== '') {
+            $sql .= " AND (
+                employee_id LIKE :s1
+                OR full_name LIKE :s2
+                OR contact LIKE :s3
+                OR position LIKE :s4
+            )";
+            $term = '%' . $search . '%';
+            foreach (['s1', 's2', 's3', 's4'] as $key) {
+                $params[$key] = $term;
+            }
+        }
+
+        $sql .= " ORDER BY archived_at DESC LIMIT 300";
+
+    } else {
+
+        $dateColumn = $hasArchivedAt ? 'r.archived_at' : 'NULL';
+
+        $sql = "
+            SELECT r.id, r.resident_id, r.first_name, r.middle_name,
+                   r.last_name, r.room_number, r.care_level,
+                   $dateColumn AS archived_at,
+                   u.full_name AS caretaker_name
+            FROM residents r
+            LEFT JOIN users u ON u.id = r.assigned_caretaker
+            WHERE $residentArchived
+        ";
+
+        if ($search !== '') {
+            $sql .= " AND (
+                r.first_name LIKE :s1
+                OR r.middle_name LIKE :s2
+                OR r.last_name LIKE :s3
+                OR r.resident_id LIKE :s4
+                OR r.room_number LIKE :s5
+                OR u.full_name LIKE :s6
+            )";
+            $term = '%' . $search . '%';
+            foreach (['s1', 's2', 's3', 's4', 's5', 's6'] as $key) {
+                $params[$key] = $term;
+            }
+        }
+
+        $sql .= " ORDER BY r.id DESC LIMIT 300";
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (Throwable $e) {
+    error_log('Admin archive load error: ' . $e->getMessage());
+    $error = $error ?: 'Unable to load archived records.';
+}
+
+$isCaretakers = $tab === 'caretakers';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -341,582 +369,253 @@ $success = $_GET['success'] ?? '';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Archive & Restore | Home for the Aged</title>
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet">
-
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            background: #f4f8f5;
-            color: #304b3b;
-            font-family: Arial, Helvetica, sans-serif;
-            display: flex;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        /* SIDEBAR TOGGLE BUTTON STYLES */
-        .sidebar-toggle-btn {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 6px;
-            padding: 6px;
-            cursor: pointer;
-            display: inline-flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 4px;
-            width: 36px;
-            height: 36px;
-            margin: 12px 0;
-            transition: background 0.2s ease, border-color 0.2s ease;
-        }
-
-        .sidebar-toggle-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
-
-        .sidebar-toggle-btn .hamburger-line {
-            display: block;
-            width: 18px;
-            height: 2px;
-            background-color: #ffffff;
-            border-radius: 2px;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar-toggle-wrapper {
-            padding-left: 15px;
-            width: 100%;
-            display: flex;
-            justify-content: flex-start;
-        }
-
-        /* SIDEBAR OVERLAY FOR MOBILE */
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 998;
-            display: none;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        /* SIDEBAR DEFAULT & COMPACT/FOLDED BEHAVIOR */
-        .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
-            width: 260px;
-            min-width: 260px;
-            transition: width 0.3s ease, transform 0.3s ease;
-            z-index: 999;
-            flex-shrink: 0;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* DESKTOP FOLDED STATE */
-        @media (min-width: 993px) {
-            body.sidebar-folded .sidebar,
-            body.sidebar-folded #sidebar,
-            body.sidebar-folded .sidebar-container,
-            body.sidebar-folded aside,
-            body.sidebar-folded .app-sidebar {
-                width: 70px;
-                min-width: 70px;
-            }
-
-            /* Hide everything except the toggle button wrapper when folded */
-            body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded .sidebar-container > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded .app-sidebar > *:not(.sidebar-toggle-wrapper) {
-                display: none !important;
-            }
-
-            /* Center button in the 70px bar when folded */
-            body.sidebar-folded .sidebar-toggle-wrapper {
-                display: flex !important;
-                justify-content: center !important;
-                padding-left: 0 !important;
-                width: 100% !important;
-                margin-top: 12px !important;
-            }
-        }
-
-        /* MOBILE SIDEBAR BEHAVIOR */
-        @media (max-width: 992px) {
-            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
-                position: fixed;
-                top: 0;
-                left: 0;
-                height: 100%;
-                transform: translateX(-100%);
-                width: 260px !important;
-            }
-
-            body.sidebar-open .sidebar,
-            body.sidebar-open #sidebar,
-            body.sidebar-open .sidebar-container,
-            body.sidebar-open aside,
-            body.sidebar-open .app-sidebar {
-                transform: translateX(0);
-            }
-        }
-
-        /* SIDEBAR LOGO */
-        .sidebar-logo {
-            display: block;
-            padding: 10px 4px 6px;
-        }
-
-        .sidebar-logo a {
-            display: block;
-        }
-
-        .sidebar-logo img {
-            display: block;
-            width: 100%;
-            max-width: 300px;
-            height: auto;
-            margin: 0 auto;
-            transform: scale(1.1);
-        }
-
-        /* app-main opened in sidebar.php */
-        .app-main {
-            width: 100% !important;
-            max-width: none !important;
-            min-width: 0;
-            min-height: 100vh;
-            padding: 16px 24px !important;
-            flex-grow: 1;
-            margin-top: 0 !important;
-            box-shadow: none !important;
-            overflow-x: hidden;
-            transition: margin-left 0.3s ease;
-        }
-
+        .admin-archive-page { width: 100%; max-width: 1600px; margin: 0 auto; }
         .archive-header {
-            background: #edf8ef;
-            border: 1px solid #dcecdf;
-            border-radius: 10px;
-            padding: 16px 20px;
-            margin-bottom: 16px;
+            background: #eaf6ee;
+            border: 1px solid #d8eadc;
+            border-radius: 14px;
+            padding: 25px 28px;
+            margin-bottom: 24px;
         }
-
-        .archive-header h1 {
-            color: #17683a;
-            font-size: 22px;
-            font-weight: 700;
-            margin: 0 0 4px;
-        }
-
-        .archive-header p {
-            color: #61796a;
-            margin: 0;
-            font-size: 13px;
-        }
-
+        .archive-header h1 { color: #17683a; font-size: 29px; font-weight: 700; margin-bottom: 7px; }
+        .archive-header p { color: #61796a; margin: 0; }
+        .archive-tabs .nav-link { color: #17683a; font-weight: 600; }
+        .archive-tabs .nav-link.active { background: #17683a; color: #fff; }
         .archive-panel {
             background: #fff;
-            border: 1px solid #e3eee6;
-            border-radius: 10px;
-            padding: 18px;
-            margin-bottom: 16px;
-            box-shadow: 0 2px 10px rgba(24, 75, 42, .04);
+            border: 1px solid #e1ebe4;
+            border-radius: 13px;
+            padding: 22px;
+            box-shadow: 0 4px 15px rgba(24,75,42,.05);
         }
-
-        .archive-module-card {
-            display: block;
-            text-decoration: none;
-            color: #304b3b;
-            background: #fff;
-            border: 1px solid #dcecdf;
-            border-radius: 8px;
-            padding: 12px 14px;
-            height: 100%;
-            transition: .2s;
+        .archive-table th { background: #eaf6ee; color: #174b2b; white-space: nowrap; }
+        .archive-table td { vertical-align: middle; }
+        .btn-restore {
+            background: #17683a;
+            border: 1px solid #17683a;
+            color: #fff;
+            border-radius: 6px;
+            padding: 7px 15px;
         }
-
-        .archive-module-card:hover,
-        .archive-module-card.selected {
-            border-color: #198754;
-            background: #f0f9f2;
-            color: #17683a;
-        }
-
-        .archive-module-card strong {
-            display: block;
-            margin-bottom: 3px;
-            font-size: 14px;
-        }
-
-        .archive-module-card small {
-            color: #61796a;
-            font-size: 12px;
-        }
-
-        .archive-table-wrap {
-            overflow-x: auto;
-        }
-
-        .archive-table th {
-            background: #edf8ef;
-            color: #17683a;
-            white-space: nowrap;
-            font-size: 13px;
-            padding: 10px 14px;
-        }
-
-        .archive-table td {
-            vertical-align: middle;
-            max-width: 260px;
-            overflow-wrap: anywhere;
-            font-size: 13px;
-            padding: 10px 14px;
-        }
-
-        .archive-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            min-width: 170px;
-        }
-
-        .archive-actions .btn {
-            font-size: 12px;
-            padding: 4px 10px;
-        }
-
-        .archive-empty {
-            background: #f7faf8;
-            border: 1px dashed #cbded0;
-            border-radius: 10px;
-            padding: 24px 16px;
-            text-align: center;
-            color: #61796a;
-        }
-
-        .archive-label {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            color: #61796a;
-            font-weight: 700;
-        }
-
-        .sidebar-link.active {
-            box-shadow: none !important;
-            outline: none !important;
-        }
-
-        @media (max-width: 760px) {
-            .archive-header,
-            .archive-panel {
-                padding: 14px;
-            }
+        .btn-restore:hover { background: #0b5425; color: #fff; }
+        .empty-state { padding: 55px 20px; text-align: center; color: #718078; }
+        .empty-state h5 { color: #26352b; font-weight: 700; }
+        @media (max-width: 576px) {
+            .archive-header { padding: 18px; }
+            .archive-header h1 { font-size: 23px; }
+            .archive-panel { padding: 12px; }
         }
     </style>
 </head>
 <body>
 
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
-
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
-<div class="archive-header d-flex justify-content-between align-items-center flex-wrap gap-3">
-    <div>
-        <h1>Archive & Restore</h1>
-        <p>Find, restore, and manage archived information[cite: 14].</p>
-    </div>
+<div class="admin-archive-page">
 
-    <a href="dashboard.php" class="btn btn-outline-success btn-sm">
-        ← Back to Dashboard
-    </a>
-</div>
-
-<?php if ($success === 'restored'): ?>
-    <div class="alert alert-success py-2 px-3 mb-3 fs-6">
-        Record restored successfully.
-    </div>
-<?php elseif ($success === 'deleted'): ?>
-    <div class="alert alert-success py-2 px-3 mb-3 fs-6">
-        Archived record permanently deleted.
-    </div>
-<?php endif; ?>
-
-<?php if ($error !== ''): ?>
-    <div class="alert alert-danger py-2 px-3 mb-3 fs-6">
-        <?= archiveEscape($error) ?>
-    </div>
-<?php endif; ?>
-
-<div class="archive-panel">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div class="archive-header d-flex justify-content-between align-items-center flex-wrap gap-3">
         <div>
-            <h2 class="h6 mb-1 text-success fw-bold">Choose a Module</h2>
-            <p class="text-muted small mb-0">
-                Select a module to view its archived records.
+            <h1>Archive &amp; Restore</h1>
+            <p>
+                Restore archived residents and caretakers, or delete them
+                permanently. Only archived records can be permanently deleted.
             </p>
         </div>
+        <a
+            href="<?= $isCaretakers ? 'caretakers.php' : 'residents.php' ?>"
+            class="btn btn-outline-success"
+        >
+            Back to <?= $isCaretakers ? 'Caretakers' : 'Residents' ?>
+        </a>
     </div>
 
-    <div class="row g-2">
-        <?php foreach ($modules as $key => $module): ?>
-            <div class="col-12 col-sm-6 col-lg-4">
-                <a
-                    class="archive-module-card <?= $selectedModule === $key ? 'selected' : '' ?>"
-                    href="archive.php?module=<?= urlencode($key) ?>"
-                >
-                    <strong>
-                        <span aria-hidden="true">🗃</span>
-                        <?= archiveEscape($module['label']) ?>
-                    </strong>
-                    <small>
-                        <?= archiveEscape($module['description']) ?>
-                    </small>
-                </a>
+    <ul class="nav nav-pills archive-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link <?= !$isCaretakers ? 'active' : '' ?>" href="archive.php?tab=residents">
+                Residents <span class="badge text-bg-light"><?= (int)$counts['residents'] ?></span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link <?= $isCaretakers ? 'active' : '' ?>" href="archive.php?tab=caretakers">
+                Caretakers <span class="badge text-bg-light"><?= (int)$counts['caretakers'] ?></span>
+            </a>
+        </li>
+    </ul>
+
+    <?php if ($success): ?>
+        <div class="alert alert-success"><?= h($success) ?></div>
+    <?php endif; ?>
+
+    <?php if ($error): ?>
+        <div class="alert alert-danger"><?= h($error) ?></div>
+    <?php endif; ?>
+
+    <div class="archive-panel">
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+                <h2 class="h5 fw-bold mb-1">
+                    Archived <?= $isCaretakers ? 'Caretakers' : 'Residents' ?>
+                </h2>
+                <p class="text-secondary small mb-0">
+                    <?php if ($isCaretakers): ?>
+                        Caretakers archived from the Caretakers page. Their login stays
+                        disabled until you restore them.
+                    <?php else: ?>
+                        Residents archived by an administrator. Caretakers' personal
+                        archives are not shown here.
+                    <?php endif; ?>
+                </p>
             </div>
-        <?php endforeach; ?>
-    </div>
-</div>
-
-<div class="archive-panel">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
-        <div>
-            <div class="archive-label">Selected Module</div>
-            <h2 class="h5 mb-1 text-success fw-bold">
-                <?= archiveEscape($modules[$selectedModule]['label']) ?>
-            </h2>
-            <p class="text-muted small mb-0">
-                Showing archived records only.
-            </p>
+            <span class="badge text-bg-secondary"><?= count($rows) ?> record(s)</span>
         </div>
 
-        <?php if ($tableExists && $hasArchiveColumn): ?>
-            <form method="get" action="archive.php" class="d-flex flex-wrap gap-2">
-                <input
-                    type="hidden"
-                    name="module"
-                    value="<?= archiveEscape($selectedModule) ?>"
-                >
+        <form method="GET" class="row g-2 mb-4">
+            <input type="hidden" name="tab" value="<?= h($tab) ?>">
+            <div class="col-md-9">
                 <input
                     type="search"
                     name="search"
-                    class="form-control form-control-sm"
-                    placeholder="Search archived records"
-                    value="<?= archiveEscape($_GET['search'] ?? '') ?>"
-                    aria-label="Search archived records"
+                    class="form-control"
+                    placeholder="<?= $isCaretakers
+                        ? 'Search name, employee ID, contact, or position...'
+                        : 'Search name, ID, room, or caretaker...' ?>"
+                    value="<?= h($search) ?>"
                 >
-                <button type="submit" class="btn btn-success btn-sm">
-                    Search
-                </button>
-            </form>
-        <?php endif; ?>
-    </div>
+            </div>
+            <div class="col-md-3 d-grid">
+                <button type="submit" class="btn btn-success">Search</button>
+            </div>
+        </form>
 
-    <?php if (!$tableExists): ?>
+        <?php if (empty($rows)): ?>
 
-        <div class="alert alert-warning py-2 px-3 mb-0 fs-6">
-            <strong>Not configured yet.</strong>
-            The database table
-            <code><?= archiveEscape($table) ?></code>
-            does not exist. This module is listed here, but it cannot
-            archive or restore records until its data storage is configured.
-        </div>
+            <div class="empty-state">
+                <h5>No Archived <?= $isCaretakers ? 'Caretakers' : 'Residents' ?></h5>
+                <p class="mb-0">
+                    <?= $isCaretakers
+                        ? 'Caretakers you archive from the Caretakers page will appear here.'
+                        : 'Residents you archive from the Residents page will appear here.' ?>
+                </p>
+            </div>
 
-    <?php elseif (!$hasArchiveColumn): ?>
+        <?php else: ?>
 
-        <div class="alert alert-warning py-2 px-3 mb-0 fs-6">
-            <strong>Archive column missing.</strong>
-            The table
-            <code><?= archiveEscape($table) ?></code>
-            does not have an <code>archived_at</code> column.
-            Add that column before using archive actions for this module.
-        </div>
-
-    <?php elseif (!$archivedRecords): ?>
-
-        <div class="archive-empty">
-            <div class="mb-2" style="font-size: 28px;">🗃</div>
-            <h3 class="h6 fw-bold">No archived records found</h3>
-            <p class="mb-0 small text-muted">
-                Archived records from this module will appear here.
-            </p>
-        </div>
-
-    <?php else: ?>
-
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <span class="text-muted small">
-                <?= count($archivedRecords) ?> archived record(s) found
-                (up to 500 loaded)
-            </span>
-        </div>
-
-        <div class="archive-table-wrap">
-            <table class="table table-bordered table-hover archive-table mb-0">
-                <thead>
-                    <tr>
-                        <?php foreach ($displayColumns as $column): ?>
-                            <th><?= archiveEscape(ucwords(str_replace('_', ' ', $column))) ?></th>
-                        <?php endforeach; ?>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    <?php foreach ($archivedRecords as $record): ?>
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover archive-table">
+                    <thead>
                         <tr>
-                            <?php foreach ($displayColumns as $column): ?>
-                                <td>
-                                    <?php
-                                    $value = $record[$column] ?? '';
-
-                                    if (
-                                        $column === 'archived_at' &&
-                                        $value !== ''
-                                    ) {
-                                        $timestamp = strtotime((string) $value);
-                                        echo $timestamp
-                                            ? archiveEscape(date('M j, Y g:i A', $timestamp))
-                                            : archiveEscape($value);
-                                    } else {
-                                        echo archiveEscape($value);
-                                    }
-                                    ?>
-                                </td>
-                            <?php endforeach; ?>
-
-                            <td>
-                                <div class="archive-actions">
-                                    <form
-                                        method="post"
-                                        action="archive.php?module=<?= urlencode($selectedModule) ?>"
-                                        onsubmit="return confirm('Restore this record to the active module?');"
-                                    >
-                                        <input type="hidden" name="csrf_token" value="<?= archiveEscape($_SESSION['archive_csrf']) ?>">
-                                        <input type="hidden" name="action" value="restore">
-                                        <input type="hidden" name="module" value="<?= archiveEscape($selectedModule) ?>">
-                                        <input type="hidden" name="record_id" value="<?= (int) $record['id'] ?>">
-
-                                        <button type="submit" class="btn btn-outline-success btn-sm">
-                                            Restore
-                                        </button>
-                                    </form>
-
-                                    <form
-                                        method="post"
-                                        action="archive.php?module=<?= urlencode($selectedModule) ?>"
-                                        onsubmit="return confirm('PERMANENTLY DELETE this archived record? This cannot be undone. Continue?');"
-                                    >
-                                        <input type="hidden" name="csrf_token" value="<?= archiveEscape($_SESSION['archive_csrf']) ?>">
-                                        <input type="hidden" name="action" value="permanent_delete">
-                                        <input type="hidden" name="module" value="<?= archiveEscape($selectedModule) ?>">
-                                        <input type="hidden" name="record_id" value="<?= (int) $record['id'] ?>">
-
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            Delete
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
+                            <?php if ($isCaretakers): ?>
+                                <th>Employee ID</th>
+                                <th>Full Name</th>
+                                <th>Contact</th>
+                                <th>Position</th>
+                                <th>Shift</th>
+                                <th>Status</th>
+                            <?php else: ?>
+                                <th>Resident ID</th>
+                                <th>Resident Name</th>
+                                <th>Room Number</th>
+                                <th>Care Level</th>
+                                <th>Assigned Caretaker</th>
+                            <?php endif; ?>
+                            <th>Date Archived</th>
+                            <th>Action</th>
                         </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($rows as $row): ?>
+                            <?php
+                            if ($isCaretakers) {
+                                $label = (string)($row['full_name'] ?? 'this caretaker');
+                                $warning = 'Their login is deleted and the residents assigned to them become unassigned.';
+                            } else {
+                                $label = trim(implode(' ', array_filter([
+                                    $row['first_name'] ?? '',
+                                    $row['middle_name'] ?? '',
+                                    $row['last_name'] ?? ''
+                                ])));
+                                $warning = 'Their health records and schedules are deleted too.';
+                            }
+                            ?>
+                            <tr>
+                                <?php if ($isCaretakers): ?>
+                                    <td><?= h($row['employee_id']) ?></td>
+                                    <td><?= h($row['full_name']) ?></td>
+                                    <td><?= h($row['contact'] ?: 'N/A') ?></td>
+                                    <td><?= h($row['position'] ?: 'N/A') ?></td>
+                                    <td><?= h($row['shift'] ?: 'N/A') ?></td>
+                                    <td><?= h($row['status'] ?: 'Unspecified') ?></td>
+                                <?php else: ?>
+                                    <td><?= h($row['resident_id']) ?></td>
+                                    <td><?= h($label) ?></td>
+                                    <td><?= h($row['room_number'] ?: 'Not assigned') ?></td>
+                                    <td><?= h($row['care_level'] ?: 'Not specified') ?></td>
+                                    <td><?= h($row['caretaker_name'] ?: 'Unassigned') ?></td>
+                                <?php endif; ?>
+                                <td>
+                                    <?= !empty($row['archived_at'])
+                                        ? h(date('M j, Y g:i A', strtotime($row['archived_at'])))
+                                        : '&mdash;' ?>
+                                </td>
+                                <td>
+                                    <div class="d-flex gap-2 flex-wrap">
 
-    <?php endif; ?>
+                                        <form
+                                            method="POST"
+                                            action="archive.php?tab=<?= h($tab) ?>"
+                                            onsubmit="return confirm('<?= $isCaretakers
+                                                ? 'Restore this caretaker and re-enable their login?'
+                                                : 'Restore this resident? Their status will be set to Active.' ?>');"
+                                        >
+                                            <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
+                                            <input type="hidden" name="action" value="restore">
+                                            <input type="hidden" name="type" value="<?= $isCaretakers ? 'caretaker' : 'resident' ?>">
+                                            <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
+                                            <button type="submit" class="btn btn-restore btn-sm">Restore</button>
+                                        </form>
+
+                                        <form
+                                            method="POST"
+                                            action="archive.php?tab=<?= h($tab) ?>"
+                                            onsubmit="return confirmPermanentDelete(<?= h(json_encode($label, JSON_HEX_APOS | JSON_HEX_QUOT)) ?>, <?= h(json_encode($warning, JSON_HEX_APOS | JSON_HEX_QUOT)) ?>);"
+                                        >
+                                            <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
+                                            <input type="hidden" name="action" value="purge">
+                                            <input type="hidden" name="type" value="<?= $isCaretakers ? 'caretaker' : 'resident' ?>">
+                                            <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                                Delete permanently
+                                            </button>
+                                        </form>
+
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+        <?php endif; ?>
+
+    </div>
 </div>
 
-<!-- Hamburger Toggle & Sidebar Behavior Script -->
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    var overlay = document.getElementById('sidebarOverlay');
-    var sidebar = document.querySelector(
-        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
+function confirmPermanentDelete(name, warning) {
+    var answer = prompt(
+        'Permanently delete ' + name + '?\n\n' + warning +
+        '\nThis cannot be undone.\n\nType DELETE to confirm.'
     );
-
-    if (!sidebar) {
-        return;
-    }
-
-    var oldTexts = ['home for the aged', 'care management system'];
-
-    sidebar.querySelectorAll('*').forEach(function (el) {
-        if (
-            el.children.length === 0 &&
-            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-        ) {
-            el.style.display = 'none';
-        }
-    });
-
-    if (!sidebar.querySelector('.sidebar-logo')) {
-        var logo = document.createElement('div');
-        logo.className = 'sidebar-logo';
-        logo.innerHTML =
-            '<a href="/homefor_thetander/admin/dashboard.php">' +
-            '<img src="/homefor_thetander/images/white1.png" ' +
-            'alt="Home for the Aged - Care, Comfort, Dignity">' +
-            '</a>';
-
-        sidebar.insertBefore(logo, sidebar.firstChild);
-    }
-
-    if (!sidebar.querySelector('#sidebarToggle')) {
-        var toggleWrapper = document.createElement('div');
-        toggleWrapper.className = 'sidebar-toggle-wrapper';
-        toggleWrapper.innerHTML = `
-            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-            </button>
-        `;
-        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
-    }
-
-    var toggleBtn = document.getElementById('sidebarToggle');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', function () {
-            if (window.innerWidth <= 992) {
-                document.body.classList.toggle('sidebar-open');
-                if (overlay) overlay.classList.toggle('active');
-            } else {
-                document.body.classList.toggle('sidebar-folded');
-            }
-        });
-    }
-
-    if (overlay) {
-        overlay.addEventListener('click', function () {
-            document.body.classList.remove('sidebar-open');
-            overlay.classList.remove('active');
-        });
-    }
-});
+    return answer !== null && answer.trim() === 'DELETE';
+}
 </script>
-
-<!-- sidebar.php already opened <main class="app-main">, close it here -->
-</main>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>

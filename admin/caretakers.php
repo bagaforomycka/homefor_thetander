@@ -24,7 +24,7 @@ $search = trim($_GET['search'] ?? '');
 $status = trim($_GET['status'] ?? '');
 $errorMsg = '';
 
-/* Archive caretaker using POST[cite: 11] */
+/* Archive caretaker using POST */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archive') {
     $token = $_POST['csrf_token'] ?? '';
     $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
@@ -35,6 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archi
         $errorMsg = 'Invalid caretaker record.';
     } else {
         try {
+            $pdo->beginTransaction();
+
             $stmt = $pdo->prepare(
                 'UPDATE caretakers
                  SET archived_at = NOW()
@@ -44,19 +46,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archi
             $stmt->execute(['id' => $id]);
 
             if ($stmt->rowCount() > 0) {
+                /* Archived caretakers cannot log in until restored. */
+                $pdo->prepare(
+                    "UPDATE users u
+                     INNER JOIN caretakers c ON c.username = u.username
+                     SET u.status = 'inactive'
+                     WHERE c.id = :id
+                       AND u.role = 'caretaker'"
+                )->execute(['id' => $id]);
+
+                $pdo->commit();
                 header('Location: caretakers.php?msg=archived');
                 exit;
             }
 
+            $pdo->rollBack();
+
             $errorMsg = 'Caretaker not found or already archived.';
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log('Caretaker archive error: ' . $e->getMessage());
             $errorMsg = 'Could not archive this caretaker.';
         }
     }
 }
 
-/* Fetch active caretakers (using DISTINCT to prevent accidental row duplication)[cite: 11] */
+/* Fetch active caretakers (using DISTINCT to prevent accidental row duplication) */
 $records = [];
 
 try {
@@ -301,7 +318,7 @@ try {
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
             <h2 class="fw-bold mb-1">Caretaker Management</h2>
-            <p class="text-muted mb-0">View and manage caretaker profiles and status[cite: 11].</p>
+            <p class="text-muted mb-0">View and manage caretaker profiles and status.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="dashboard.php" class="btn btn-outline-success">← Back to Dashboard</a>
@@ -311,7 +328,7 @@ try {
 
     <?php if (($_GET['msg'] ?? '') === 'archived'): ?>
         <div class="alert alert-success">
-            Caretaker archived successfully[cite: 11].
+            Caretaker archived successfully.
         </div>
     <?php endif; ?>
 
@@ -373,7 +390,7 @@ try {
                 <?php if (!$records): ?>
                     <tr>
                         <td colspan="7" class="text-center text-muted py-4">
-                            No active caretakers found matching your criteria[cite: 11].
+                            No active caretakers found matching your criteria.
                         </td>
                     </tr>
                 <?php else: ?>
@@ -407,12 +424,12 @@ try {
                                     >Edit</a>
 
                                     <form method="POST" class="d-inline"
-                                          onsubmit="return confirm('Archive this caretaker?');">
+                                          onsubmit="return confirm('Archive this caretaker? You can restore them later from Archive & Restore.');">
                                         <input type="hidden" name="csrf_token" value="<?= e($_SESSION['caretakers_csrf']) ?>">
                                         <input type="hidden" name="action" value="archive">
                                         <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            Delete
+                                            Archive
                                         </button>
                                     </form>
                                 </div>

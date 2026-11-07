@@ -11,6 +11,7 @@ if (
 }
 
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/archive_helper.php';
 
 function e($value): string
 {
@@ -49,6 +50,66 @@ function residentPicture($picture): string
 
 $caretakerId = (int)$_SESSION['user_id'];
 
+/* Private archive table (shared with archive.php). */
+try {
+    archiveEnsureCaretakerTable($pdo);
+    $residentVisible = archiveResidentVisibleSql($pdo, '');
+} catch (Throwable $e) {
+    error_log('My Residents setup error: ' . $e->getMessage());
+    http_response_code(500);
+    exit('Unable to prepare your residents list. Please contact the administrator.');
+}
+
+if (empty($_SESSION['caretaker_archive_csrf'])) {
+    $_SESSION['caretaker_archive_csrf'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['caretaker_archive_csrf'];
+
+/* Archive a resident (hides from My Residents only; restorable). */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archive') {
+
+    $submittedToken = $_POST['csrf_token'] ?? '';
+
+    if (!is_string($submittedToken) || !hash_equals($csrfToken, $submittedToken)) {
+        http_response_code(403);
+        exit('Invalid security token. Please refresh the page.');
+    }
+
+    $archiveResidentId = filter_var($_POST['resident_id'] ?? null, FILTER_VALIDATE_INT);
+
+    if ($archiveResidentId && $archiveResidentId > 0) {
+        try {
+            // Only residents assigned to this caretaker can be archived.
+            $check = $pdo->prepare("
+                SELECT id FROM residents
+                WHERE id = :id AND assigned_caretaker = :caretaker
+                  AND $residentVisible
+                LIMIT 1
+            ");
+            $check->execute(['id' => $archiveResidentId, 'caretaker' => $caretakerId]);
+
+            if ($check->fetchColumn()) {
+                $ins = $pdo->prepare("
+                    INSERT IGNORE INTO caretaker_resident_archive
+                        (caretaker_user_id, resident_id)
+                    VALUES (:caretaker, :resident)
+                ");
+                $ins->execute([
+                    'caretaker' => $caretakerId,
+                    'resident' => $archiveResidentId
+                ]);
+                header('Location: myresidents.php?archived=1');
+                exit;
+            }
+        } catch (Throwable $e) {
+            error_log('Caretaker archive error: ' . $e->getMessage());
+        }
+    }
+
+    header('Location: myresidents.php?archive_error=1');
+    exit;
+}
+
 $residents = [];
 $error = '';
 $profile = null;
@@ -79,12 +140,19 @@ try {
             FROM residents
             WHERE id = :id
               AND assigned_caretaker = :caretaker
+              AND $residentVisible
+              AND NOT EXISTS (
+                  SELECT 1 FROM caretaker_resident_archive ca
+                  WHERE ca.resident_id = residents.id
+                    AND ca.caretaker_user_id = :caretaker_archive
+              )
             LIMIT 1
         ");
 
         $stmt->execute([
             'id' => $profileId,
-            'caretaker' => $caretakerId
+            'caretaker' => $caretakerId,
+            'caretaker_archive' => $caretakerId
         ]);
 
         $profile = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -115,11 +183,18 @@ try {
                 profile_picture
             FROM residents
             WHERE assigned_caretaker = :caretaker
+              AND $residentVisible
+              AND NOT EXISTS (
+                  SELECT 1 FROM caretaker_resident_archive ca
+                  WHERE ca.resident_id = residents.id
+                    AND ca.caretaker_user_id = :caretaker_archive
+              )
             ORDER BY first_name ASC, last_name ASC
         ");
 
         $stmt->execute([
-            'caretaker' => $caretakerId
+            'caretaker' => $caretakerId,
+            'caretaker_archive' => $caretakerId
         ]);
 
         $residents = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -356,6 +431,24 @@ foreach ($residents as $resident) {
         .view-profile-button:hover {
             background: #0b5425;
             color: #fff;
+        }
+
+        .archive-button {
+            display: block;
+            width: 100%;
+            background: #fff;
+            color: #8a5b00;
+            border: 1px solid #e0b25a;
+            border-radius: 7px;
+            padding: 9px;
+            margin-top: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: .2s;
+        }
+
+        .archive-button:hover {
+            background: #fff1d6;
         }
 
         .empty-state {
@@ -599,6 +692,15 @@ foreach ($residents as $resident) {
             <p>View the residents assigned to your care and access their profiles.</p>
         </div>
 
+        <?php if (isset($_GET['archived'])): ?>
+            <div class="alert alert-success">
+                Resident archived. You can bring them back anytime from
+                <a href="archive.php">Archive &amp; Restore</a>.
+            </div>
+        <?php elseif (isset($_GET['archive_error'])): ?>
+            <div class="alert alert-danger">Unable to archive that resident.</div>
+        <?php endif; ?>
+
         <?php if ($error): ?>
 
             <div class="alert alert-danger">
@@ -783,6 +885,14 @@ foreach ($residents as $resident) {
                                 >
                                     View Resident Profile
                                 </a>
+
+                                <form method="post" action="myresidents.php"
+                                      onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');">
+                                    <input type="hidden" name="action" value="archive">
+                                    <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+                                    <input type="hidden" name="resident_id" value="<?= (int)$resident['id'] ?>">
+                                    <button type="submit" class="archive-button">Archive</button>
+                                </form>
 
                             </div>
 
