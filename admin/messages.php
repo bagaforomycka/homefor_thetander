@@ -266,7 +266,7 @@ try {
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
         <div>
             <h2 class="fw-bold mb-1">Messages - Inbox</h2>
-            <p class="text-muted mb-0">View and manage internal communication and system alerts[cite: 15].</p>
+            <p class="text-muted mb-0">View and manage internal communication and system alerts.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="dashboard.php" class="btn btn-outline-success">← Back to Dashboard</a>
