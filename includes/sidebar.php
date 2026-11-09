@@ -10,7 +10,14 @@ if (!isset($_SESSION['user_id'], $_SESSION['role'])) {
 }
 
 $currentRole = strtolower($_SESSION['role']);
-$currentPage = basename($_SERVER['PHP_SELF'] ?? '');
+$sbScript    = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? '');
+$currentPage = basename($sbScript);
+
+/* admin/rooms/index.php and admin/schedules/index.php report "index.php":
+   use the folder name instead so the right menu item is highlighted. */
+if ($currentPage === 'index.php') {
+    $currentPage = basename(dirname($sbScript)) . '.php';
+}
 
 /* Profile info for the top-right account menu */
 require_once __DIR__ . '/../config/db.php';
@@ -49,15 +56,21 @@ if ($sbInitials === '') {
 }
 
 if (!function_exists('sidebarLink')) {
+    /**
+     * $page may be one file name or a list of file names. A menu item stays
+     * highlighted on its own page and on the add / view / edit pages under it.
+     */
     function sidebarLink(
         string $href,
         string $label,
-        string $page,
+        $page,
         string $currentPage
     ): void {
-        $active = ($page === $currentPage) ? ' active' : '';
+        $isActive = in_array($currentPage, (array) $page, true);
+        $active   = $isActive ? ' active' : '';
+        $current  = $isActive ? ' aria-current="page"' : '';
 
-        echo '<a class="sidebar-link' . $active . '" href="' .
+        echo '<a class="sidebar-link' . $active . '"' . $current . ' href="' .
             htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">' .
             '<span class="sidebar-link-label">' .
             htmlspecialchars($label, ENT_QUOTES, 'UTF-8') .
@@ -210,12 +223,13 @@ if (!function_exists('sidebarLink')) {
             margin-bottom: 3px;
             padding: 11px 9px;
             border-radius: 8px;
+            border-left: 4px solid transparent;
             color: #ffffff;
             text-decoration: none;
             font-size: 14px;
             font-weight: 400;
             line-height: 1.4;
-            transition: background-color 0.2s ease;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
         }
 
         .sidebar-link-label {
@@ -229,10 +243,13 @@ if (!function_exists('sidebarLink')) {
             color: #ffffff;
         }
 
-        .sidebar-link.active {
-            background: var(--sidebar-active);
-            color: #ffffff;
-            font-weight: 600;
+        /* Current page: filled background, bright bar on the left, bold text.
+           !important so a page's own ".sidebar-link.active" rule cannot undo it. */
+        .app-sidebar .sidebar-link.active {
+            background: rgba(255, 255, 255, 0.22) !important;
+            border-left-color: #8be0a6 !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
         }
 
         .sidebar-account {
@@ -350,6 +367,71 @@ if (!function_exists('sidebarLink')) {
         @media (max-width: 991.98px) {
             .sidebar-toggle-float {
                 display: none !important;
+            }
+        }
+
+        /* ===== One sidebar size on every page =====
+           Some pages still carry their own sidebar / .app-main CSS (a 260px
+           width, a flex body, a "folded" state, ...). These rules come after
+           the page's <style>, so they win and keep the layout identical
+           everywhere. */
+        body {
+            display: block !important;
+        }
+
+        .sidebar-overlay,
+        .app-sidebar .sidebar-toggle-wrapper {
+            display: none !important;
+        }
+
+        .app-sidebar {
+            display: block !important;
+            min-width: 0;
+        }
+
+        @media (min-width: 992px) {
+            body .app-sidebar,
+            body.sidebar-folded .app-sidebar {
+                width: var(--sidebar-width) !important;
+                min-width: var(--sidebar-width) !important;
+                max-width: var(--sidebar-width) !important;
+                height: 100vh !important;
+                position: fixed !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+            }
+
+            body .app-main {
+                margin-left: var(--sidebar-width) !important;
+                width: calc(100% - var(--sidebar-width)) !important;
+                max-width: none !important;
+                min-width: 0;
+                padding: 72px 28px 28px !important;
+                transition: margin-left 0.3s ease, width 0.3s ease;
+            }
+
+            body.sidebar-hidden .app-main {
+                margin-left: 0 !important;
+                width: 100% !important;
+            }
+        }
+
+        @media (max-width: 991.98px) {
+            body .app-sidebar {
+                position: relative !important;
+                transform: none !important;
+                width: 100% !important;
+                min-width: 0 !important;
+                max-width: none !important;
+                height: auto !important;
+                overflow-y: visible !important;
+            }
+
+            body .app-main {
+                margin-left: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                padding: 18px 12px !important;
             }
         }
 
@@ -807,7 +889,7 @@ if (!function_exists('sidebarLink')) {
             sidebarLink(
                 '/homefor_thetander/admin/dashboard.php',
                 'Dashboard',
-                'dashboard.php',
+                ['dashboard.php', 'admission_tracker.php'],
                 $currentPage
             );
             ?>
@@ -818,21 +900,21 @@ if (!function_exists('sidebarLink')) {
             sidebarLink(
                 '/homefor_thetander/admin/residents.php',
                 'Residents',
-                'residents.php',
+                ['residents.php', 'add_resident.php', 'view_resident.php', 'edit_resident.php', 'delete_resident.php'],
                 $currentPage
             );
 
             sidebarLink(
                 '/homefor_thetander/admin/rooms.php',
                 'Rooms',
-                'rooms.php',
+                ['rooms.php', 'rooms_index.php'],
                 $currentPage
             );
 
             sidebarLink(
                 '/homefor_thetander/admin/health_records.php',
                 'Health Records',
-                'health_records.php',
+                ['health_records.php', 'add_health_record.php', 'view_health_records.php'],
                 $currentPage
             );
             ?>
@@ -843,7 +925,7 @@ if (!function_exists('sidebarLink')) {
             sidebarLink(
                 '/homefor_thetander/admin/caretakers.php',
                 'Caretakers',
-                'caretakers_staff.php',
+                ['caretakers.php', 'add_caretaker.php', 'add_staff.php', 'view_profile_cs.php', 'edit_profile_cs.php', 'caretaker_profile.php'],
                 $currentPage
             );
             ?>
@@ -854,14 +936,14 @@ if (!function_exists('sidebarLink')) {
             sidebarLink(
                 '/homefor_thetander/admin/schedules.php',
                 'Schedules',
-                'schedules.php',
+                ['schedules.php', 'add_schedule.php', 'view_schedules.php'],
                 $currentPage
             );
 
             sidebarLink(
                 '/homefor_thetander/admin/messages.php',
                 'Messages',
-                'messages.php',
+                ['messages.php', 'new_message.php'],
                 $currentPage
             );
             ?>
@@ -904,7 +986,7 @@ if (!function_exists('sidebarLink')) {
             sidebarLink(
                 '/homefor_thetander/admin/archive.php',
                 'Archive & Restore',
-                'archive.php',
+                ['archive.php', 'restore.php'],
                 $currentPage
             );
             ?>
@@ -1013,6 +1095,40 @@ if (!function_exists('sidebarLink')) {
     </aside>
 
 </div>
+
+<script>
+/* Keep the sidebar scroll position between pages, so clicking a link near the
+   bottom (Announcements, Settings, Archive...) does not jump back to the top. */
+(function () {
+    var side = document.querySelector('.app-sidebar');
+    if (!side) return;
+
+    var KEY = 'sidebarScrollTop';
+
+    try {
+        var saved = parseInt(sessionStorage.getItem(KEY), 10);
+        if (!isNaN(saved)) side.scrollTop = saved;
+    } catch (e) {}
+
+    // No saved position (first visit): make sure the current item is visible.
+    var active = side.querySelector('.sidebar-link.active');
+    if (active && side.scrollHeight > side.clientHeight) {
+        var top = active.offsetTop;
+        var bottom = top + active.offsetHeight;
+        if (top < side.scrollTop || bottom > side.scrollTop + side.clientHeight) {
+            side.scrollTop = Math.max(0, top - side.clientHeight / 2);
+        }
+    }
+
+    function save() {
+        try { sessionStorage.setItem(KEY, String(side.scrollTop)); } catch (e) {}
+    }
+
+    side.addEventListener('scroll', save, { passive: true });
+    side.addEventListener('click', save);
+    window.addEventListener('pagehide', save);
+})();
+</script>
 
 <main class="app-main">
 
