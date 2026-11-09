@@ -25,21 +25,36 @@ $isAdmin = $_SESSION['role'] === 'admin';
 
 $allowedStatuses = ['Scheduled', 'Completed', 'Cancelled'];
 
-/* Create a CSRF token for schedule actions[cite: 12]. */
+/* Create a CSRF token for schedule actions. */
 if (empty($_SESSION['schedules_csrf_token'])) {
     $_SESSION['schedules_csrf_token'] = bin2hex(random_bytes(32));
 }
 
 $csrfToken = $_SESSION['schedules_csrf_token'];
 
-/* Delete means archive. It does not permanently delete the schedule[cite: 12]. */
+/* Where to go after an action: the Schedules page or the dashboard widget. */
+$returnToDashboard = ($_POST['return'] ?? '') === 'dashboard';
+
+function scheduleRedirect(bool $toDashboard, string $result): void
+{
+    header(
+        'Location: ' . ($toDashboard
+            ? 'dashboard.php?schedule=' . $result
+            : 'schedules.php?success=' . $result)
+    );
+    exit;
+}
+
+/* Mark as done / Delete (delete = archive, it can be restored later). */
 if (
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    ($_POST['action'] ?? '') === 'delete'
+    in_array($_POST['action'] ?? '', ['delete', 'complete'], true)
 ) {
-    if (!$isAdmin) {
+    $action = $_POST['action'];
+
+    if ($action === 'delete' && !$isAdmin) {
         http_response_code(403);
-        exit('Only an administrator can archive schedules.');
+        exit('Only an administrator can delete schedules.');
     }
 
     $postedToken = $_POST['csrf_token'] ?? '';
@@ -52,37 +67,48 @@ if (
         exit('Invalid security token. Please return to Schedules and try again.');
     }
 
-    $deleteId = filter_input(INPUT_POST, 'schedule_id', FILTER_VALIDATE_INT);
+    $actionId = filter_input(INPUT_POST, 'schedule_id', FILTER_VALIDATE_INT);
 
-    if (!$deleteId || $deleteId < 1) {
-        header('Location: schedules.php?success=invalid');
-        exit;
+    if (!$actionId || $actionId < 1) {
+        scheduleRedirect($returnToDashboard, 'invalid');
     }
 
     try {
+        if ($action === 'complete') {
+            $stmt = $pdo->prepare(
+                "UPDATE schedules
+                 SET status = 'Completed'
+                 WHERE id = :id
+                   AND archived_at IS NULL
+                   AND status = 'Scheduled'"
+            );
+            $stmt->execute(['id' => $actionId]);
+
+            scheduleRedirect(
+                $returnToDashboard,
+                $stmt->rowCount() > 0 ? 'done' : 'notfound'
+            );
+        }
+
         $stmt = $pdo->prepare(
             'UPDATE schedules
              SET archived_at = NOW()
              WHERE id = :id
                AND archived_at IS NULL'
         );
+        $stmt->execute(['id' => $actionId]);
 
-        $stmt->execute(['id' => $deleteId]);
-
-        if ($stmt->rowCount() > 0) {
-            header('Location: schedules.php?success=archived');
-            exit;
-        }
-
-        header('Location: schedules.php?success=notfound');
-        exit;
+        scheduleRedirect(
+            $returnToDashboard,
+            $stmt->rowCount() > 0 ? 'archived' : 'notfound'
+        );
     } catch (PDOException $e) {
-        error_log('Schedule archive error: ' . $e->getMessage());
-        $error = 'Unable to archive this schedule. Please check the database and try again.';
+        error_log('Schedule action error: ' . $e->getMessage());
+        $error = 'Unable to update this schedule. Please check the database and try again.';
     }
 }
 
-/* Retrieve active schedules and their optional resident names[cite: 12]. */
+/* Retrieve active schedules and their optional resident names. */
 $sql = "
     SELECT
         s.*,
@@ -438,6 +464,18 @@ try {
             padding: 5px 10px;
         }
 
+        .btn-schedule-done {
+            background: #198754;
+            border: 1px solid #198754;
+            color: #ffffff;
+        }
+
+        .btn-schedule-done:hover {
+            background: #157347;
+            border-color: #146c43;
+            color: #ffffff;
+        }
+
         @media (max-width: 576px) {
             .schedule-header,
             .schedule-panel {
@@ -475,6 +513,8 @@ try {
     <div class="alert alert-success">Schedule added successfully.</div>
 <?php elseif ($success === 'updated'): ?>
     <div class="alert alert-success">Schedule updated successfully.</div>
+<?php elseif ($success === 'done'): ?>
+    <div class="alert alert-success">Schedule marked as done.</div>
 <?php elseif ($success === 'archived'): ?>
     <div class="alert alert-success">
         Schedule archived successfully. You can restore it from Archive & Restore in the sidebar.
@@ -639,6 +679,24 @@ try {
                        class="btn btn-schedule-view">
                         View
                     </a>
+
+                    <?php if ($itemStatus === 'Scheduled'): ?>
+                        <form method="POST"
+                              action="schedules.php"
+                              class="d-inline">
+                            <input type="hidden" name="action" value="complete">
+                            <input type="hidden"
+                                   name="schedule_id"
+                                   value="<?= (int)$item['id'] ?>">
+                            <input type="hidden"
+                                   name="csrf_token"
+                                   value="<?= h($csrfToken) ?>">
+                            <button type="submit"
+                                    class="btn btn-schedule-done">
+                                Mark as Done
+                            </button>
+                        </form>
+                    <?php endif; ?>
 
                     <a href="add_schedule.php?edit=<?= (int)$item['id'] ?>"
                        class="btn btn-schedule-edit">

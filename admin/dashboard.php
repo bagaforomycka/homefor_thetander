@@ -115,8 +115,9 @@ $newAnnouncements = latestRecordVersion(
 
 $newSchedules = latestRecordVersion(
     $pdo,
-    "SELECT MAX(created_at) FROM scheduled_tasks
-     WHERE created_at >= NOW() - INTERVAL 1 DAY"
+    "SELECT MAX(created_at) FROM schedules
+     WHERE archived_at IS NULL
+     AND created_at >= NOW() - INTERVAL 1 DAY"
 );
 
 try {
@@ -134,19 +135,41 @@ try {
     $dashboardAnnouncements = [];
 }
 
+/* Same table as Schedules / Add Schedule, so new schedules show up here. */
+$isAdmin = ($_SESSION['role'] ?? '') === 'admin';
+
+if (empty($_SESSION['schedules_csrf_token'])) {
+    $_SESSION['schedules_csrf_token'] = bin2hex(random_bytes(32));
+}
+
+$scheduleCsrf = $_SESSION['schedules_csrf_token'];
+
 try {
     $scheduleStmt = $pdo->query(
-        "SELECT task_name, scheduled_date, status
-         FROM scheduled_tasks
-         ORDER BY scheduled_date DESC
-         LIMIT 3"
+        "SELECT s.id, s.title, s.schedule_type, s.schedule_date,
+                s.start_time, s.status,
+                r.first_name, r.last_name
+         FROM schedules s
+         LEFT JOIN residents r ON r.id = s.resident_id
+         WHERE s.archived_at IS NULL
+           AND s.status = 'Scheduled'
+         ORDER BY s.schedule_date ASC, s.start_time ASC, s.id ASC
+         LIMIT 5"
     );
 
     $dashboardSchedules =
         $scheduleStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
+    error_log('Dashboard schedules error: ' . $e->getMessage());
     $dashboardSchedules = [];
 }
+
+$scheduleNotice = [
+    'done'     => ['success', 'Schedule marked as done.'],
+    'archived' => ['success', 'Schedule deleted. You can restore it from Archive & Restore.'],
+    'notfound' => ['warning', 'That schedule was not found or was already updated.'],
+    'invalid'  => ['warning', 'Please select a valid schedule.'],
+][$_GET['schedule'] ?? ''] ?? null;
 ?>
 
 <!DOCTYPE html>
@@ -502,6 +525,50 @@ try {
         .schedule-item small {
             color: #626b63;
             font-size: 11px;
+        }
+
+        .schedule-info {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        .schedule-item-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .schedule-item-actions form {
+            margin: 0;
+        }
+
+        .schedule-btn {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .schedule-btn-done {
+            background: #17683a;
+            color: #ffffff;
+            border: 1px solid #17683a;
+        }
+
+        .schedule-btn-done:hover {
+            background: #0f4f2a;
+        }
+
+        .schedule-btn-delete {
+            background: #ffffff;
+            color: #b02a37;
+            border: 1px solid #e0a4aa;
+        }
+
+        .schedule-btn-delete:hover {
+            background: #b02a37;
+            color: #ffffff;
         }
 
         .mark-read-button {
@@ -860,26 +927,63 @@ try {
                 <a href="schedules.php">View All →</a>
             </div>
 
+            <?php if ($scheduleNotice): ?>
+                <div class="alert alert-<?= h($scheduleNotice[0]) ?> py-2 px-3 mb-2" style="font-size:12px;">
+                    <?= h($scheduleNotice[1]) ?>
+                </div>
+            <?php endif; ?>
+
             <?php if (!empty($dashboardSchedules)): ?>
 
                 <?php foreach ($dashboardSchedules as $schedule): ?>
 
+                    <?php
+                    $dashResident = trim(
+                        ($schedule['first_name'] ?? '') . ' ' .
+                        ($schedule['last_name'] ?? '')
+                    );
+                    $dashTime = !empty($schedule['start_time'])
+                        ? date('g:i A', strtotime($schedule['start_time']))
+                        : '';
+                    ?>
+
                     <div class="schedule-item">
-                        <div>
-                            <strong><?= h($schedule['task_name']) ?></strong>
+                        <div class="schedule-info">
+                            <strong><?= h($schedule['title']) ?></strong>
 
                             <small>
-                                Date:
-                                <?= !empty($schedule['scheduled_date'])
-                                    ? date(
-                                        'M d, Y',
-                                        strtotime($schedule['scheduled_date'])
-                                    )
-                                    : 'Not set' ?>
-                                |
-                                Status:
-                                <?= h($schedule['status'] ?? 'Pending') ?>
+                                <?= !empty($schedule['schedule_date'])
+                                    ? h(date('M d, Y', strtotime($schedule['schedule_date'])))
+                                    : 'No date' ?>
+                                <?= $dashTime !== '' ? '· ' . h($dashTime) : '' ?>
+                                <?= $dashResident !== '' ? '· ' . h($dashResident) : '' ?>
+                                · <?= h($schedule['schedule_type'] ?? '') ?>
                             </small>
+                        </div>
+
+                        <div class="schedule-item-actions">
+                            <form method="POST" action="schedules.php">
+                                <input type="hidden" name="action" value="complete">
+                                <input type="hidden" name="return" value="dashboard">
+                                <input type="hidden" name="schedule_id" value="<?= (int) $schedule['id'] ?>">
+                                <input type="hidden" name="csrf_token" value="<?= h($scheduleCsrf) ?>">
+                                <button type="submit" class="schedule-btn schedule-btn-done">
+                                    Mark as Done
+                                </button>
+                            </form>
+
+                            <?php if ($isAdmin): ?>
+                                <form method="POST" action="schedules.php"
+                                      onsubmit="return confirm('Delete this schedule? It will be moved to Archive &amp; Restore and can be restored later.');">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="return" value="dashboard">
+                                    <input type="hidden" name="schedule_id" value="<?= (int) $schedule['id'] ?>">
+                                    <input type="hidden" name="csrf_token" value="<?= h($scheduleCsrf) ?>">
+                                    <button type="submit" class="schedule-btn schedule-btn-delete">
+                                        Delete
+                                    </button>
+                                </form>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -888,7 +992,7 @@ try {
             <?php else: ?>
 
                 <p class="empty-message">
-                    No scheduled tasks available.
+                    No pending schedules. New schedules you add will appear here.
                 </p>
 
             <?php endif; ?>
