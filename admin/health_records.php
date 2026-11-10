@@ -468,10 +468,7 @@ try {
         <p>View and manage residents' health information.</p>
     </div>
  
-    <div class="d-flex gap-2 flex-wrap">
-        <a href="dashboard.php" class="btn btn-outline-success">
-            ← Back to Dashboard
-        </a>
+    
  
         <a href="add_health_record.php" class="btn btn-success">
             + Add Health Record

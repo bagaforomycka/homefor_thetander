@@ -19,6 +19,11 @@ if ($currentPage === 'index.php') {
     $currentPage = basename(dirname($sbScript)) . '.php';
 }
 
+/* "View Profile" goes to the profile page of the logged-in role */
+$sbProfileUrl = $currentRole === 'caretaker'
+    ? '/homefor_thetander/caretaker/profile.php'
+    : '/homefor_thetander/admin/profile.php';
+
 /* Profile info for the top-right account menu */
 require_once __DIR__ . '/../config/db.php';
 
@@ -809,7 +814,7 @@ if (!function_exists('sidebarLink')) {
     </button>
 
     <div class="profile-dropdown" id="profileDropdown" role="menu" hidden>
-        <a class="pm-item pm-view" role="menuitem" href="/homefor_thetander/profile.php">
+        <a class="pm-item pm-view" role="menuitem" href="<?= htmlspecialchars($sbProfileUrl, ENT_QUOTES, 'UTF-8') ?>">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="8" r="4"></circle>
                 <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"></path>

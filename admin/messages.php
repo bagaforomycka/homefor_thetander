@@ -269,7 +269,7 @@ try {
             <p class="text-muted mb-0">View and manage internal communication and system alerts.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="dashboard.php" class="btn btn-outline-success">← Back to Dashboard</a>
+            
             <a href="new_message.php" class="btn btn-success">+ New Message</a>
         </div>
     </div>

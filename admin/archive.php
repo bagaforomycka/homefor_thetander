@@ -430,7 +430,7 @@ $isCaretakers = $tab === 'caretakers';
             href="<?= $isCaretakers ? 'caretakers.php' : 'residents.php' ?>"
             class="btn btn-outline-success"
         >
-            Back to <?= $isCaretakers ? 'Caretakers' : 'Residents' ?>
+           
         </a>
     </div>
 

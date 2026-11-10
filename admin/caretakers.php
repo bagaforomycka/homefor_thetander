@@ -321,7 +321,7 @@ try {
             <p class="text-muted mb-0">View and manage caretaker profiles and status.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="dashboard.php" class="btn btn-outline-success">← Back to Dashboard</a>
+           
             <a href="add_caretaker.php" class="btn btn-success">+ Add Caretaker</a>
         </div>
     </div>

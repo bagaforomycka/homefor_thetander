@@ -1,28 +1,16 @@
 <?php
 /**
  * HOME FOR THE AGED
- * CARETAKER ARCHIVE, RESTORE AND REMOVE
- * File: caretaker/archive.php
- *
- * A caretaker only ever sees and changes their own archive.
- *   Archive (My Residents)    -> hidden from My Residents, listed here
- *   Restore                   -> back in My Residents
- *   Remove permanently        -> gone from this caretaker's account for good
- *                                (the resident record stays with the admin)
- * Residents an admin archives or deletes disappear from this account.
+ * ADMIN ARCHIVE, RESTORE AND PERMANENT DELETE
+ * File: admin/archive.php
  */
+include_once __DIR__ . '/../includes/session.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-/* =========================================
-   SECURITY: CARETAKER ACCESS ONLY
-========================================= */
+session_start();
 
 if (
     !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    strtolower((string)$_SESSION['role']) !== 'caretaker'
+    strtolower((string)$_SESSION['role']) !== 'admin'
 ) {
     header('Location: ../index.php');
     exit;
@@ -31,253 +19,448 @@ if (
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../config/archive_helper.php';
 
-$caretakerId = (int) $_SESSION['user_id'];
-
-/* =========================================
-   HELPER FUNCTION
-========================================= */
-
-function archiveEscape($value): string
+function h($value): string
 {
-    return htmlspecialchars(
-        (string)($value ?? ''),
-        ENT_QUOTES,
-        'UTF-8'
-    );
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-/* =========================================
-   PRIVATE ARCHIVE TABLE
-========================================= */
+if (empty($_SESSION['admin_archive_csrf'])) {
+    $_SESSION['admin_archive_csrf'] = bin2hex(random_bytes(32));
+}
 
-$error = '';
+$csrfToken = $_SESSION['admin_archive_csrf'];
+$tab = (($_GET['tab'] ?? 'residents') === 'caretakers') ? 'caretakers' : 'residents';
+$search = trim((string)($_GET['search'] ?? ''));
 $success = '';
+$error = '';
+$rows = [];
+$counts = ['residents' => 0, 'caretakers' => 0];
+$hasArchivedAt = false;
 
 try {
+    $columns = $pdo->query("SHOW COLUMNS FROM residents")->fetchAll(PDO::FETCH_COLUMN);
+    $hasArchivedAt = in_array('archived_at', $columns, true);
     archiveEnsureCaretakerTable($pdo);
-    $residentVisible = archiveResidentVisibleSql($pdo, 'r');
 } catch (Throwable $e) {
-    error_log('Caretaker archive setup error: ' . $e->getMessage());
-    http_response_code(500);
-    exit('Unable to prepare the archive. Please contact the administrator.');
+    error_log('Admin archive setup: ' . $e->getMessage());
+    $error = 'Unable to check the database tables.';
 }
 
-/* =========================================
-   CSRF SECURITY TOKEN
-========================================= */
+$residentArchived = $hasArchivedAt
+    ? "(r.status = 'archived' OR r.archived_at IS NOT NULL)"
+    : "r.status = 'archived'";
 
-if (empty($_SESSION['caretaker_archive_csrf'])) {
-    $_SESSION['caretaker_archive_csrf'] = bin2hex(random_bytes(32));
-}
-
-$csrfToken = $_SESSION['caretaker_archive_csrf'];
-
-/* =========================================
-   RESTORE OR REMOVE (own records only)
-========================================= */
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+/* RESTORE OR PERMANENTLY DELETE */
+if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $submittedToken = $_POST['csrf_token'] ?? '';
 
-    if (
-        !is_string($submittedToken) ||
-        !hash_equals($csrfToken, $submittedToken)
-    ) {
+    if (!is_string($submittedToken) || !hash_equals($csrfToken, $submittedToken)) {
         http_response_code(403);
         exit('Invalid security token. Please refresh the page.');
     }
 
-    $action = ($_POST['action'] ?? '') === 'remove' ? 'remove' : 'restore';
+    $action = ($_POST['action'] ?? '') === 'purge' ? 'purge' : 'restore';
+    $type = ($_POST['type'] ?? '') === 'caretaker' ? 'caretaker' : 'resident';
+    $recordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
+    $postTab = $type === 'caretaker' ? 'caretakers' : 'residents';
 
-    $archiveId = filter_var(
-        $_POST['archive_id'] ?? null,
-        FILTER_VALIDATE_INT
-    );
-
-    if (!$archiveId || $archiveId < 1) {
-
-        $error = 'Invalid archived record.';
-
+    if (!$recordId || $recordId < 1) {
+        $error = 'Invalid record selected.';
     } else {
-
         try {
 
-            if ($action === 'restore') {
+            /* RESTORE RESIDENT */
+            if ($action === 'restore' && $type === 'resident') {
 
-                /*
-                 * Restore only if the entry is in this caretaker's own
-                 * archive, the resident is still assigned to them and the
-                 * admin has not archived or deleted the resident.
-                 */
+                $set = $hasArchivedAt
+                    ? "r.status = 'active', r.archived_at = NULL"
+                    : "r.status = 'active'";
+
                 $stmt = $pdo->prepare("
-                    DELETE ca
-                    FROM caretaker_resident_archive ca
-                    INNER JOIN residents r
-                        ON r.id = ca.resident_id
-                    WHERE ca.id = :archive_id
-                      AND ca.caretaker_user_id = :caretaker_id
-                      AND ca.removed_at IS NULL
-                      AND r.assigned_caretaker = :assigned_caretaker
-                      AND $residentVisible
+                    UPDATE residents r
+                    SET $set
+                    WHERE r.id = :id
+                      AND $residentArchived
                 ");
 
-                $stmt->execute([
-                    'archive_id' => $archiveId,
-                    'caretaker_id' => $caretakerId,
-                    'assigned_caretaker' => $caretakerId
-                ]);
+                $stmt->execute(['id' => $recordId]);
 
                 if ($stmt->rowCount() > 0) {
-                    header('Location: archive.php?restored=1');
+                    header('Location: archive.php?tab=residents&restored=1');
                     exit;
                 }
 
-                $error = 'You cannot restore this record because it is not in your personal archive or is no longer assigned to you.';
+                $error = 'Record not found or not archived.';
+            }
 
-            } else {
+            /* RESTORE CARETAKER */
+            if ($action === 'restore' && $type === 'caretaker') {
 
-                /*
-                 * Permanent removal: only from this caretaker's own
-                 * archive, and only after the resident was archived.
-                 */
-                $stmt = $pdo->prepare("
-                    UPDATE caretaker_resident_archive
-                    SET removed_at = NOW()
-                    WHERE id = :archive_id
-                      AND caretaker_user_id = :caretaker_id
-                      AND removed_at IS NULL
+                $pdo->beginTransaction();
+
+                $find = $pdo->prepare("
+                    SELECT username, status
+                    FROM caretakers
+                    WHERE id = :id AND archived_at IS NOT NULL
+                    LIMIT 1
                 ");
 
-                $stmt->execute([
-                    'archive_id' => $archiveId,
-                    'caretaker_id' => $caretakerId
-                ]);
+                $find->execute(['id' => $recordId]);
+                $caretaker = $find->fetch(PDO::FETCH_ASSOC);
 
-                if ($stmt->rowCount() > 0) {
-                    header('Location: archive.php?removed=1');
+                if (!$caretaker) {
+                    $pdo->rollBack();
+                    $error = 'Record not found or not archived.';
+                } else {
+
+                    $pdo->prepare("
+                        UPDATE caretakers
+                        SET archived_at = NULL
+                        WHERE id = :id
+                    ")->execute(['id' => $recordId]);
+
+                    /* Login follows caretaker employment status. */
+                    $pdo->prepare("
+                        UPDATE users
+                        SET status = :status
+                        WHERE username = :username
+                          AND role = 'caretaker'
+                    ")->execute([
+                        'status' => (
+                            strtolower(trim((string)$caretaker['status'])) === 'active'
+                        ) ? 'active' : 'inactive',
+                        'username' => $caretaker['username']
+                    ]);
+
+                    $pdo->commit();
+
+                    header('Location: archive.php?tab=caretakers&restored=1');
                     exit;
                 }
+            }
 
-                $error = 'You cannot remove this record because it is not in your personal archive.';
+            /* PERMANENTLY DELETE RESIDENT */
+            if ($action === 'purge' && $type === 'resident') {
+
+                $pdo->beginTransaction();
+
+                $find = $pdo->prepare("
+                    SELECT r.id, r.profile_picture
+                    FROM residents r
+                    WHERE r.id = :id
+                      AND $residentArchived
+                    LIMIT 1
+                    FOR UPDATE
+                ");
+
+                $find->execute(['id' => $recordId]);
+                $resident = $find->fetch(PDO::FETCH_ASSOC);
+
+                if (!$resident) {
+                    $pdo->rollBack();
+                    $error = 'Only archived residents can be permanently deleted.';
+                } else {
+
+                    /* Remove related records. */
+                    foreach ([
+                        'health_records' => 'resident_id',
+                        'schedules' => 'resident_id',
+                        'caretaker_resident_archive' => 'resident_id'
+                    ] as $table => $column) {
+
+                        $pdo->prepare("
+                            DELETE FROM `$table`
+                            WHERE `$column` = :id
+                        ")->execute(['id' => $recordId]);
+                    }
+
+                    $pdo->prepare("
+                        DELETE FROM residents
+                        WHERE id = :id
+                    ")->execute(['id' => $recordId]);
+
+                    /* Remove picture only when no other resident uses it. */
+                    $pictureFile = '';
+                    $picture = basename(
+                        trim((string)($resident['profile_picture'] ?? ''))
+                    );
+
+                    if ($picture !== '') {
+
+                        $inUse = $pdo->prepare("
+                            SELECT COUNT(*)
+                            FROM residents
+                            WHERE profile_picture = :p
+                        ");
+
+                        $inUse->execute([
+                            'p' => $resident['profile_picture']
+                        ]);
+
+                        if ((int)$inUse->fetchColumn() === 0) {
+                            $pictureFile = __DIR__ .
+                                '/uploads/residentspic/' . $picture;
+                        }
+                    }
+
+                    $pdo->commit();
+
+                    if ($pictureFile !== '' && is_file($pictureFile)) {
+                        @unlink($pictureFile);
+                    }
+
+                    header('Location: archive.php?tab=residents&deleted=1');
+                    exit;
+                }
+            }
+
+            /* PERMANENTLY DELETE CARETAKER */
+            if ($action === 'purge' && $type === 'caretaker') {
+
+                $pdo->beginTransaction();
+
+                $find = $pdo->prepare("
+                    SELECT id, username
+                    FROM caretakers
+                    WHERE id = :id
+                      AND archived_at IS NOT NULL
+                    LIMIT 1
+                    FOR UPDATE
+                ");
+
+                $find->execute(['id' => $recordId]);
+                $caretaker = $find->fetch(PDO::FETCH_ASSOC);
+
+                if (!$caretaker) {
+                    $pdo->rollBack();
+                    $error = 'Only archived caretakers can be permanently deleted.';
+                } else {
+
+                    $userFind = $pdo->prepare("
+                        SELECT id
+                        FROM users
+                        WHERE username = :username
+                          AND role = 'caretaker'
+                        LIMIT 1
+                    ");
+
+                    $userFind->execute([
+                        'username' => $caretaker['username']
+                    ]);
+
+                    $userId = (int)$userFind->fetchColumn();
+
+                    if ($userId > 0) {
+
+                        /* Residents remain but become unassigned. */
+                        $pdo->prepare("
+                            UPDATE residents
+                            SET assigned_caretaker = NULL
+                            WHERE assigned_caretaker = :uid
+                        ")->execute(['uid' => $userId]);
+
+                        $pdo->prepare("
+                            DELETE FROM caretaker_resident_archive
+                            WHERE caretaker_user_id = :uid
+                        ")->execute(['uid' => $userId]);
+
+                        try {
+                            $pdo->prepare("
+                                DELETE FROM password_resets
+                                WHERE user_id = :uid
+                            ")->execute(['uid' => $userId]);
+                        } catch (Throwable $ignored) {
+                            /* Password reset table may not exist. */
+                        }
+
+                        $pdo->prepare("
+                            DELETE FROM users
+                            WHERE id = :uid
+                              AND role = 'caretaker'
+                        ")->execute(['uid' => $userId]);
+                    }
+
+                    $pdo->prepare("
+                        DELETE FROM caretakers
+                        WHERE id = :id
+                    ")->execute(['id' => $recordId]);
+
+                    $pdo->commit();
+
+                    header('Location: archive.php?tab=caretakers&deleted=1');
+                    exit;
+                }
             }
 
         } catch (Throwable $e) {
 
-            error_log('Caretaker archive action error: ' . $e->getMessage());
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
 
-            $error = 'An error occurred. Please try again.';
+            error_log('Admin archive action error: ' . $e->getMessage());
+
+            $error = $action === 'purge'
+                ? 'Unable to permanently delete this record. Other records may still depend on it.'
+                : 'Unable to restore the selected record.';
         }
     }
+
+    $tab = $postTab;
 }
 
-/* =========================================
-   SUCCESS MESSAGE
-========================================= */
-
+/* SUCCESS MESSAGES */
 if (isset($_GET['restored'])) {
-    $success = 'Resident successfully restored to your My Residents list.';
-} elseif (isset($_GET['removed'])) {
-    $success = 'Resident permanently removed from your account.';
+    $success = $tab === 'caretakers'
+        ? 'Caretaker restored to the Caretakers list and their login status updated.'
+        : 'Resident restored. Their status is now Active.';
+
+} elseif (isset($_GET['deleted'])) {
+    $success = $tab === 'caretakers'
+        ? 'Caretaker permanently deleted. Their residents are now unassigned.'
+        : 'Resident permanently deleted, including their health records and schedules.';
 }
 
-/* =========================================
-   SEARCH ARCHIVED RESIDENTS (own archive only)
-========================================= */
+/* TAB COUNTS */
+if (!$error || $_SERVER['REQUEST_METHOD'] === 'POST') {
 
-$search = trim((string)($_GET['search'] ?? ''));
-
-$archivedResidents = [];
-
-try {
-
-    $sql = "
-        SELECT
-            ca.id AS archive_id,
-            ca.archived_at,
-            r.id AS resident_record_id,
-            r.resident_id,
-            r.first_name,
-            r.middle_name,
-            r.last_name,
-            r.room_number,
-            r.care_level,
-            r.status
-        FROM caretaker_resident_archive ca
-        INNER JOIN residents r
-            ON r.id = ca.resident_id
-        WHERE ca.caretaker_user_id = :caretaker_id
-          AND ca.removed_at IS NULL
-          AND r.assigned_caretaker = :assigned_caretaker
-          AND $residentVisible
-    ";
-
-    $params = [
-        'caretaker_id' => $caretakerId,
-        'assigned_caretaker' => $caretakerId
-    ];
-
-    if ($search !== '') {
-
-        $sql .= "
-            AND (
-                r.first_name LIKE :search_first
-                OR r.middle_name LIKE :search_middle
-                OR r.last_name LIKE :search_last
-                OR r.resident_id LIKE :search_code
-                OR r.room_number LIKE :search_room
-            )
-        ";
-
-        $term = '%' . $search . '%';
-
-        $params['search_first'] = $term;
-        $params['search_middle'] = $term;
-        $params['search_last'] = $term;
-        $params['search_code'] = $term;
-        $params['search_room'] = $term;
+    try {
+        $counts['residents'] = (int)$pdo
+            ->query("SELECT COUNT(*) FROM residents r WHERE $residentArchived")
+            ->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('Admin archive resident count: ' . $e->getMessage());
     }
 
-    $sql .= "
-        ORDER BY ca.archived_at DESC
-        LIMIT 300
-    ";
+    try {
+        $counts['caretakers'] = (int)$pdo
+            ->query("
+                SELECT COUNT(*)
+                FROM caretakers
+                WHERE archived_at IS NOT NULL
+            ")
+            ->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('Admin archive caretaker count: ' . $e->getMessage());
+    }
+}
+
+/* LOAD ARCHIVED RECORDS */
+try {
+
+    $params = [];
+
+    if ($tab === 'caretakers') {
+
+        $sql = "
+            SELECT id, employee_id, full_name, contact, position, shift,
+                   status, archived_at
+            FROM caretakers
+            WHERE archived_at IS NOT NULL
+        ";
+
+        if ($search !== '') {
+
+            $sql .= "
+                AND (
+                    employee_id LIKE :s1
+                    OR full_name LIKE :s2
+                    OR contact LIKE :s3
+                    OR position LIKE :s4
+                )
+            ";
+
+            $term = '%' . $search . '%';
+
+            foreach (['s1', 's2', 's3', 's4'] as $key) {
+                $params[$key] = $term;
+            }
+        }
+
+        $sql .= " ORDER BY archived_at DESC LIMIT 300";
+
+    } else {
+
+        $dateColumn = $hasArchivedAt ? 'r.archived_at' : 'NULL';
+
+        $sql = "
+            SELECT
+                r.id,
+                r.resident_id,
+                r.first_name,
+                r.middle_name,
+                r.last_name,
+                r.room_number,
+                r.care_level,
+                $dateColumn AS archived_at,
+                u.full_name AS caretaker_name
+            FROM residents r
+            LEFT JOIN users u
+                ON u.id = r.assigned_caretaker
+            WHERE $residentArchived
+        ";
+
+        if ($search !== '') {
+
+            $sql .= "
+                AND (
+                    r.first_name LIKE :s1
+                    OR r.middle_name LIKE :s2
+                    OR r.last_name LIKE :s3
+                    OR r.resident_id LIKE :s4
+                    OR r.room_number LIKE :s5
+                    OR u.full_name LIKE :s6
+                )
+            ";
+
+            $term = '%' . $search . '%';
+
+            foreach (['s1', 's2', 's3', 's4', 's5', 's6'] as $key) {
+                $params[$key] = $term;
+            }
+        }
+
+        $sql .= " ORDER BY r.id DESC LIMIT 300";
+    }
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-
-    $archivedResidents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (Throwable $e) {
-
-    error_log('Caretaker archive loading error: ' . $e->getMessage());
-
-    $error = $error ?: 'Unable to load your archived residents.';
+    error_log('Admin archive load error: ' . $e->getMessage());
+    $error = $error ?: 'Unable to load archived records.';
 }
+
+$isCaretakers = $tab === 'caretakers';
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Archive & Restore | Home for the Aged</title>
+    <title>Archive &amp; Restore | Home for the Aged</title>
 
-    <link
+  <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
 
+    <!-- PLACE YOUR CUSTOM OVERRIDE STYLE RIGHT AFTER BOOTSTRAP -->
     <style>
+        * {
+            box-sizing: border-box;
+        }
 
-        .caretaker-archive-page {
+        .admin-archive-page {
             width: 100%;
             max-width: 1600px;
+            min-width: 0;
             margin: 0 auto;
+            padding: 20px;
         }
 
         .archive-header {
@@ -300,12 +483,66 @@ try {
             margin: 0;
         }
 
+        /* FORCEFULLY OVERRIDE BOOTSTRAP BLUE PILLS */
+        .nav-pills .nav-link.active, 
+        .nav-pills .show > .nav-link,
+        .archive-tabs .nav-link.active {
+            background-color: #17683a !important;
+            background: #17683a !important;
+            color: #ffffff !important;
+            border-color: #17683a !important;
+        }
+
+        .archive-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            border-bottom: 1px solid #d8eadc;
+            padding: 0 0 12px;
+        }
+
+        .archive-tabs .nav-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            color: #17683a;
+            background-color: #ffffff;
+            border: 1.5px solid #17683a;
+            border-radius: 8px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: background-color .2s ease, color .2s ease;
+        }
+
+        .archive-tabs .nav-link:hover {
+            color: #ffffff;
+            background-color: #10552d;
+            border-color: #10552d;
+        }
+
+        /* NUMBER BADGES */
+        .archive-tabs .nav-link .badge {
+            color: #17683a;
+            background-color: #eaf6ee;
+        }
+
+        .archive-tabs .nav-link.active .badge {
+            color: #17683a;
+            background-color: #ffffff;
+        }
+
         .archive-panel {
-            background: #ffffff;
+            background: #fff;
             border: 1px solid #e1ebe4;
             border-radius: 13px;
             padding: 22px;
             box-shadow: 0 4px 15px rgba(24,75,42,.05);
+        }
+
+        .archive-table {
+            min-width: 720px;
         }
 
         .archive-table th {
@@ -321,14 +558,15 @@ try {
         .btn-restore {
             background: #17683a;
             border: 1px solid #17683a;
-            color: #ffffff;
+            color: #fff;
             border-radius: 6px;
             padding: 7px 15px;
         }
 
         .btn-restore:hover {
             background: #0b5425;
-            color: #ffffff;
+            border-color: #0b5425;
+            color: #fff;
         }
 
         .empty-state {
@@ -342,101 +580,134 @@ try {
             font-weight: 700;
         }
 
-        @media(max-width: 576px) {
-
-            .archive-header {
-                padding: 18px;
-            }
-
-            .archive-header h1 {
-                font-size: 23px;
-            }
-
-            .archive-panel {
+        @media (max-width: 576px) {
+            .admin-archive-page {
                 padding: 12px;
             }
+            .archive-tabs {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr !important;
+                gap: 8px !important;
+            }
+            .archive-tabs .nav-link {
+                width: 100%;
+                padding: 10px 6px;
+                font-size: 13px;
+                justify-content: center;
+            }
         }
-
     </style>
-
 </head>
 
 <body>
 
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
-<div class="caretaker-archive-page">
+<div class="admin-archive-page">
 
-    <!-- PAGE HEADER -->
-
+    <!-- HEADER -->
     <div class="archive-header d-flex justify-content-between align-items-center flex-wrap gap-3">
 
         <div>
-
             <h1>Archive &amp; Restore</h1>
 
             <p>
-                View, restore or permanently remove residents you archived from your personal list.
+                Restore archived residents and caretakers, or delete them
+                permanently. Only archived records can be permanently deleted.
             </p>
-
         </div>
 
         <a
-            href="myresidents.php"
+            href="<?= $isCaretakers ? 'caretakers.php' : 'residents.php' ?>"
             class="btn btn-outline-success"
         >
-            Back to My Residents
+            Back to <?= $isCaretakers ? 'Caretakers' : 'Residents' ?>
         </a>
 
     </div>
 
-    <!-- SUCCESS MESSAGE -->
+    <!-- RESIDENTS AND CARETAKERS TABS -->
+    <ul class="nav nav-pills archive-tabs mb-3">
+
+        <li class="nav-item">
+            <a
+                class="nav-link <?= !$isCaretakers ? 'active' : '' ?>"
+                href="archive.php?tab=residents"
+            >
+                Residents
+                <span class="badge text-bg-light">
+                    <?= (int)$counts['residents'] ?>
+                </span>
+            </a>
+        </li>
+
+        <li class="nav-item">
+            <a
+                class="nav-link <?= $isCaretakers ? 'active' : '' ?>"
+                href="archive.php?tab=caretakers"
+            >
+                Caretakers
+                <span class="badge text-bg-light">
+                    <?= (int)$counts['caretakers'] ?>
+                </span>
+            </a>
+        </li>
+
+    </ul>
 
     <?php if ($success): ?>
-
         <div class="alert alert-success">
-            <?= archiveEscape($success) ?>
+            <?= h($success) ?>
         </div>
-
     <?php endif; ?>
-
-    <!-- ERROR MESSAGE -->
 
     <?php if ($error): ?>
-
         <div class="alert alert-danger">
-            <?= archiveEscape($error) ?>
+            <?= h($error) ?>
         </div>
-
     <?php endif; ?>
 
-    <!-- ARCHIVE TABLE -->
-
+    <!-- ARCHIVE CONTENT -->
     <div class="archive-panel">
 
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
 
             <div>
-
                 <h2 class="h5 fw-bold mb-1">
-                    My Archived Residents
+                    Archived <?= $isCaretakers ? 'Caretakers' : 'Residents' ?>
                 </h2>
 
                 <p class="text-secondary small mb-0">
-                    Only residents archived by your own account are shown. Removing one is permanent for your account only.
-                </p>
 
+                    <?php if ($isCaretakers): ?>
+
+                        Caretakers archived from the Caretakers page. Their login
+                        stays disabled until you restore them.
+
+                    <?php else: ?>
+
+                        Residents archived by an administrator. Caretakers'
+                        personal archives are not shown here.
+
+                    <?php endif; ?>
+
+                </p>
             </div>
 
             <span class="badge text-bg-secondary">
-                <?= count($archivedResidents) ?> record(s)
+                <?= count($rows) ?> record(s)
             </span>
 
         </div>
 
         <!-- SEARCH -->
-
         <form method="GET" class="row g-2 mb-4">
+
+            <input
+                type="hidden"
+                name="tab"
+                value="<?= h($tab) ?>"
+            >
 
             <div class="col-md-9">
 
@@ -444,18 +715,17 @@ try {
                     type="search"
                     name="search"
                     class="form-control"
-                    placeholder="Search resident name, ID, or room..."
-                    value="<?= archiveEscape($search) ?>"
+                    placeholder="<?= $isCaretakers
+                        ? 'Search name, employee ID, contact, or position...'
+                        : 'Search name, ID, room, or caretaker...' ?>"
+                    value="<?= h($search) ?>"
                 >
 
             </div>
 
             <div class="col-md-3 d-grid">
 
-                <button
-                    type="submit"
-                    class="btn btn-success"
-                >
+                <button type="submit" class="btn btn-success">
                     Search
                 </button>
 
@@ -463,129 +733,196 @@ try {
 
         </form>
 
-        <!-- EMPTY STATE -->
-
-        <?php if (empty($archivedResidents)): ?>
+        <?php if (empty($rows)): ?>
 
             <div class="empty-state">
 
-                <h5>No Archived Residents</h5>
+                <h5>
+                    No Archived <?= $isCaretakers ? 'Caretakers' : 'Residents' ?>
+                </h5>
 
                 <p class="mb-0">
-                    Residents that you archive from My Residents will appear here.
+                    <?= $isCaretakers
+                        ? 'Caretakers you archive from the Caretakers page will appear here.'
+                        : 'Residents you archive from the Residents page will appear here.' ?>
                 </p>
 
             </div>
 
         <?php else: ?>
 
-            <!-- RESIDENT TABLE -->
-
             <div class="table-responsive">
 
                 <table class="table table-bordered table-hover archive-table">
 
                     <thead>
-
                         <tr>
 
-                            <th>Resident ID</th>
+                            <?php if ($isCaretakers): ?>
 
-                            <th>Resident Name</th>
+                                <th>Employee ID</th>
+                                <th>Full Name</th>
+                                <th>Contact</th>
+                                <th>Position</th>
+                                <th>Shift</th>
+                                <th>Status</th>
 
-                            <th>Room Number</th>
+                            <?php else: ?>
 
-                            <th>Care Level</th>
+                                <th>Resident ID</th>
+                                <th>Resident Name</th>
+                                <th>Room Number</th>
+                                <th>Care Level</th>
+                                <th>Assigned Caretaker</th>
 
-                            <th>Status</th>
+                            <?php endif; ?>
 
                             <th>Date Archived</th>
-
                             <th>Action</th>
 
                         </tr>
-
                     </thead>
 
                     <tbody>
 
-                        <?php foreach ($archivedResidents as $resident): ?>
+                        <?php foreach ($rows as $row): ?>
 
                             <?php
 
-                            $fullName = trim(implode(' ', array_filter([
+                            if ($isCaretakers) {
+                                $label = (string)($row['full_name'] ?? 'this caretaker');
 
-                                $resident['first_name'] ?? '',
+                                $warning =
+                                    'Their login is deleted and the residents assigned to them become unassigned.';
 
-                                $resident['middle_name'] ?? '',
+                            } else {
 
-                                $resident['last_name'] ?? ''
+                                $label = trim(implode(' ', array_filter([
+                                    $row['first_name'] ?? '',
+                                    $row['middle_name'] ?? '',
+                                    $row['last_name'] ?? ''
+                                ])));
 
-                            ])));
+                                $warning =
+                                    'Their health records and schedules are deleted too.';
+                            }
 
                             ?>
 
                             <tr>
 
-                                <td>
-                                    <?= archiveEscape($resident['resident_id']) ?>
-                                </td>
+                                <?php if ($isCaretakers): ?>
+
+                                    <td><?= h($row['employee_id']) ?></td>
+                                    <td><?= h($row['full_name']) ?></td>
+                                    <td><?= h($row['contact'] ?: 'N/A') ?></td>
+                                    <td><?= h($row['position'] ?: 'N/A') ?></td>
+                                    <td><?= h($row['shift'] ?: 'N/A') ?></td>
+                                    <td><?= h($row['status'] ?: 'Unspecified') ?></td>
+
+                                <?php else: ?>
+
+                                    <td><?= h($row['resident_id']) ?></td>
+                                    <td><?= h($label) ?></td>
+                                    <td><?= h($row['room_number'] ?: 'Not assigned') ?></td>
+                                    <td><?= h($row['care_level'] ?: 'Not specified') ?></td>
+                                    <td><?= h($row['caretaker_name'] ?: 'Unassigned') ?></td>
+
+                                <?php endif; ?>
 
                                 <td>
-                                    <?= archiveEscape($fullName) ?>
-                                </td>
-
-                                <td>
-                                    <?= archiveEscape($resident['room_number'] ?: 'Not assigned') ?>
-                                </td>
-
-                                <td>
-                                    <?= archiveEscape($resident['care_level'] ?: 'Not specified') ?>
-                                </td>
-
-                                <td>
-                                    <?= archiveEscape($resident['status'] ?: 'Unspecified') ?>
-                                </td>
-
-                                <td>
-                                    <?= archiveEscape(
-                                        date(
-                                            'M j, Y g:i A',
-                                            strtotime($resident['archived_at'])
-                                        )
-                                    ) ?>
+                                    <?= !empty($row['archived_at'])
+                                        ? h(date('M j, Y g:i A', strtotime($row['archived_at'])))
+                                        : '&mdash;' ?>
                                 </td>
 
                                 <td>
 
                                     <div class="d-flex gap-2 flex-wrap">
 
+                                        <!-- RESTORE -->
                                         <form
                                             method="POST"
-                                            action="archive.php"
-                                            onsubmit="return confirm('Are you sure you want to restore this resident?');"
+                                            action="archive.php?tab=<?= h($tab) ?>"
+                                            onsubmit="return confirm('<?= $isCaretakers
+                                                ? 'Restore this caretaker and re-enable their login?'
+                                                : 'Restore this resident? Their status will be set to Active.' ?>');"
                                         >
-                                            <input type="hidden" name="csrf_token" value="<?= archiveEscape($csrfToken) ?>">
-                                            <input type="hidden" name="action" value="restore">
-                                            <input type="hidden" name="archive_id" value="<?= (int)$resident['archive_id'] ?>">
 
-                                            <button type="submit" class="btn btn-restore btn-sm">
+                                            <input
+                                                type="hidden"
+                                                name="csrf_token"
+                                                value="<?= h($csrfToken) ?>"
+                                            >
+
+                                            <input
+                                                type="hidden"
+                                                name="action"
+                                                value="restore"
+                                            >
+
+                                            <input
+                                                type="hidden"
+                                                name="type"
+                                                value="<?= $isCaretakers ? 'caretaker' : 'resident' ?>"
+                                            >
+
+                                            <input
+                                                type="hidden"
+                                                name="record_id"
+                                                value="<?= (int)$row['id'] ?>"
+                                            >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-restore btn-sm"
+                                            >
                                                 Restore
                                             </button>
+
                                         </form>
 
+                                        <!-- PERMANENT DELETE -->
                                         <form
                                             method="POST"
-                                            action="archive.php"
-                                            onsubmit="return confirm('Permanently remove this resident from your account? You will not be able to restore them. The resident record stays with the administrator.');"
+                                            action="archive.php?tab=<?= h($tab) ?>"
+                                            onsubmit="return confirmPermanentDelete(
+                                                <?= h(json_encode($label, JSON_HEX_APOS | JSON_HEX_QUOT)) ?>,
+                                                <?= h(json_encode($warning, JSON_HEX_APOS | JSON_HEX_QUOT)) ?>
+                                            );"
                                         >
-                                            <input type="hidden" name="csrf_token" value="<?= archiveEscape($csrfToken) ?>">
-                                            <input type="hidden" name="action" value="remove">
-                                            <input type="hidden" name="archive_id" value="<?= (int)$resident['archive_id'] ?>">
 
-                                            <button type="submit" class="btn btn-outline-danger btn-sm">
-                                                Remove permanently
+                                            <input
+                                                type="hidden"
+                                                name="csrf_token"
+                                                value="<?= h($csrfToken) ?>"
+                                            >
+
+                                            <input
+                                                type="hidden"
+                                                name="action"
+                                                value="purge"
+                                            >
+
+                                            <input
+                                                type="hidden"
+                                                name="type"
+                                                value="<?= $isCaretakers ? 'caretaker' : 'resident' ?>"
+                                            >
+
+                                            <input
+                                                type="hidden"
+                                                name="record_id"
+                                                value="<?= (int)$row['id'] ?>"
+                                            >
+
+                                            <button
+                                                type="submit"
+                                                class="btn btn-outline-danger btn-sm"
+                                            >
+                                                Delete Permanently
                                             </button>
+
                                         </form>
 
                                     </div>
@@ -608,10 +945,11 @@ try {
 
 </div>
 
-</main>
-
-<script
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function confirmPermanentDelete(name, warning) {
+        return confirm('PERMANENT DELETE: Are you sure you want to completely delete ' + name + '?\n\n' + warning + '\n\nThis action CANNOT be undone.');
+    }
 </script>
 
 </body>
