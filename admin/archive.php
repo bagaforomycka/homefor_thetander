@@ -385,7 +385,7 @@ $isCaretakers = $tab === 'caretakers';
         .archive-header h1 { color: #17683a; font-size: 29px; font-weight: 700; margin-bottom: 7px; }
         .archive-header p { color: #61796a; margin: 0; }
         .archive-tabs .nav-link { color: #17683a; font-weight: 600; }
-        .archive-tabs .nav-link.active { background: #17683a; color: #fff; }
+        .archive-tabs .nav-link.active { background: #231768; color: #830606; }
         .archive-panel {
             background: #fff;
             border: 1px solid #e1ebe4;
