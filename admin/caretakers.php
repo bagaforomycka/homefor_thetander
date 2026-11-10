@@ -317,7 +317,7 @@ try {
 <div class="main-content">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
-            <h2 class="fw-bold mb-1">Caretaker Management</h2>
+           <h2 class="fw-bold mb-1 text-success">Caretaker Management</h2>
             <p class="text-muted mb-0">View and manage caretaker profiles and status.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">

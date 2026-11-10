@@ -35,6 +35,23 @@ $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
 /*
 |--------------------------------------------------------------------------
+| USER TABLE SETTINGS (used by Change Password / Forgot Password)
+|--------------------------------------------------------------------------
+| Change these to match your real users table.
+|
+|  $usersTable      table that stores the accounts
+|  $userKeyCol      column that equals $_SESSION['user_id']
+|  $accountLookupCol column an admin types in to find an account
+|                   (username, email, or the same ID column)
+|  $passwordCol     column that stores the password HASH
+*/
+$usersTable       = 'users';
+$userKeyCol       = 'id';
+$accountLookupCol = 'username';
+$passwordCol      = 'password';
+
+/*
+|--------------------------------------------------------------------------
 | Create Settings tables
 |--------------------------------------------------------------------------
 */
@@ -153,6 +170,17 @@ function settingsRedirect(string $section): void
     exit;
 }
 
+function settingsValidatePassword(string $password): void
+{
+    if (strlen($password) < 8) {
+        throw new RuntimeException('The new password must be at least 8 characters long.');
+    }
+
+    if (strlen($password) > 200) {
+        throw new RuntimeException('The new password is too long.');
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | Available settings sections
@@ -160,17 +188,15 @@ function settingsRedirect(string $section): void
 */
 
 $sections = [
-    'facility'      => 'Facility Information',
-    'rooms'         => 'Room Management',
-    'care-levels'   => 'Care Levels',
-    'tasks'         => 'Task Categories',
-    'notifications' => 'Notification Settings',
-    'admins'        => 'Admin Accounts',
-    'caretakers'    => 'Caretaker Accounts',
-    'permissions'   => 'Permissions',
-    'password'      => 'Change Password',
-    'login-history' => 'Login History',
-    'activity'      => 'Account Activity',
+    'facility'        => 'Facility Information',
+    'rooms'           => 'Room Management',
+    'care-levels'     => 'Care Levels',
+    'notifications'   => 'Notification Settings',
+    'caretakers'      => 'Caretaker Accounts',
+    'permissions'     => 'Permissions',
+    'password'        => 'Change Password',
+    'forgot-password' => 'Forgot Password',
+    'activity'        => 'Account Activity',
 ];
 
 $section = (string) ($_GET['section'] ?? '');
@@ -235,14 +261,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             /*
-            | Save care levels, task categories, or room types
+            | Save care levels or room types
             */
             elseif ($action === 'save_list') {
                 $listKey = (string) ($_POST['list_key'] ?? '');
 
                 $allowedLists = [
                     'care_levels',
-                    'task_categories',
                     'room_types',
                 ];
 
@@ -291,7 +316,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $section = match ($listKey) {
                     'care_levels' => 'care-levels',
-                    'task_categories' => 'tasks',
                     default => 'rooms',
                 };
 
@@ -379,6 +403,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $section = 'permissions';
             }
 
+            /*
+            | Change the signed-in admin's own password
+            */
+            elseif ($action === 'change_password') {
+                $section = 'password';
+
+                $current = (string) ($_POST['current_password'] ?? '');
+                $new     = (string) ($_POST['new_password'] ?? '');
+                $confirm = (string) ($_POST['confirm_password'] ?? '');
+
+                if ($current === '' || $new === '' || $confirm === '') {
+                    throw new RuntimeException('Please fill in all password fields.');
+                }
+
+                if (!hash_equals($new, $confirm)) {
+                    throw new RuntimeException('The new passwords do not match.');
+                }
+
+                settingsValidatePassword($new);
+
+                $stmt = $pdo->prepare(
+                    "SELECT `$passwordCol` FROM `$usersTable`
+                     WHERE `$userKeyCol` = ? LIMIT 1"
+                );
+                $stmt->execute([$currentUser]);
+                $storedHash = $stmt->fetchColumn();
+
+                if (!$storedHash || !password_verify($current, (string) $storedHash)) {
+                    throw new RuntimeException('Your current password is incorrect.');
+                }
+
+                $update = $pdo->prepare(
+                    "UPDATE `$usersTable`
+                     SET `$passwordCol` = ?
+                     WHERE `$userKeyCol` = ?"
+                );
+                $update->execute([
+                    password_hash($new, PASSWORD_DEFAULT),
+                    $currentUser,
+                ]);
+
+                session_regenerate_id(true);
+
+                settingsLog($pdo, $currentUser, 'Changed own password');
+
+                $notice = 'Your password was changed successfully.';
+            }
+
+            /*
+            | Forgot password: an admin sets a new password for another account
+            */
+            elseif ($action === 'reset_password') {
+                $section = 'forgot-password';
+
+                $target  = trim((string) ($_POST['target_account'] ?? ''));
+                $new     = (string) ($_POST['new_password'] ?? '');
+                $confirm = (string) ($_POST['confirm_password'] ?? '');
+
+                if ($target === '') {
+                    throw new RuntimeException('Enter the account to reset.');
+                }
+
+                if (!hash_equals($new, $confirm)) {
+                    throw new RuntimeException('The new passwords do not match.');
+                }
+
+                settingsValidatePassword($new);
+
+                $stmt = $pdo->prepare(
+                    "SELECT `$userKeyCol` FROM `$usersTable`
+                     WHERE `$accountLookupCol` = ? LIMIT 1"
+                );
+                $stmt->execute([$target]);
+                $targetKey = $stmt->fetchColumn();
+
+                if ($targetKey === false) {
+                    throw new RuntimeException('No account was found with that value.');
+                }
+
+                $update = $pdo->prepare(
+                    "UPDATE `$usersTable`
+                     SET `$passwordCol` = ?
+                     WHERE `$userKeyCol` = ?"
+                );
+                $update->execute([
+                    password_hash($new, PASSWORD_DEFAULT),
+                    $targetKey,
+                ]);
+
+                settingsLog(
+                    $pdo,
+                    $currentUser,
+                    'Reset password for another account',
+                    'Account: ' . $target
+                );
+
+                $notice = 'The password for that account was reset. Share the new password with the user securely and ask them to change it.';
+            }
+
             else {
                 throw new RuntimeException(
                     'That settings action is not available.'
@@ -419,12 +542,6 @@ $careLevels = settingsGetList(
     ['Independent living', 'Assisted living', 'Full assistance']
 );
 
-$taskCategories = settingsGetList(
-    $pdo,
-    'task_categories',
-    ['Medication', 'Meals', 'Bathing', 'Exercise', 'Appointment']
-);
-
 $roomTypes = settingsGetList(
     $pdo,
     'room_types',
@@ -450,12 +567,6 @@ $activityRows = $pdo->query("
 |--------------------------------------------------------------------------
 */
 
-$adminLink = '/homefor_thetander/admin/users.php';
-
-if (is_file(__DIR__ . '/admin_accounts.php')) {
-    $adminLink = '/homefor_thetander/admin/admin_accounts.php';
-}
-
 $caretakerLink = '/homefor_thetander/admin/caretakers_staff.php';
 
 if (is_file(__DIR__ . '/caretakers.php')) {
@@ -474,6 +585,10 @@ if (is_file(__DIR__ . '/caretakers.php')) {
     <style>
         * {
             box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
         }
 
         body {
@@ -509,6 +624,12 @@ if (is_file(__DIR__ . '/caretakers.php')) {
          * Do not define another sidebar or open a second main element here.
          */
 
+        /* The script at the bottom adds .js-sidebar to the real sidebar */
+        .js-sidebar {
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
         .app-main {
             margin-left: 250px !important;
             width: calc(100% - 250px) !important;
@@ -518,6 +639,76 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             padding: 28px !important;
             box-shadow: none !important;
             overflow-x: hidden;
+        }
+
+        /* Mobile menu button + backdrop (hidden on desktop) */
+        .menu-toggle {
+            display: none;
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 1101;
+            width: 44px;
+            height: 44px;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #0b5426;
+            border-radius: 10px;
+            background: #0b5426;
+            color: #fff;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, .25);
+        }
+
+        .menu-toggle:focus-visible,
+        .back-to-top:focus-visible {
+            outline: 3px solid #2f80d9;
+            outline-offset: 2px;
+        }
+
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1099;
+            background: rgba(0, 0, 0, .45);
+        }
+
+        /* Back-to-top button */
+        .back-to-top {
+            position: fixed;
+            right: 22px;
+            bottom: 22px;
+            z-index: 1000;
+            width: 46px;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 50%;
+            background: #0b5426;
+            color: #fff;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .28);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(10px);
+            transition: opacity .2s ease, transform .2s ease, visibility .2s;
+        }
+
+        .back-to-top.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .back-to-top:hover {
+            background: #063b18;
         }
 
         .page-heading {
@@ -623,6 +814,7 @@ if (is_file(__DIR__ . '/caretakers.php')) {
         .topline {
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 16px;
             margin: 0 0 18px;
             color: #173b24;
@@ -685,6 +877,10 @@ if (is_file(__DIR__ . '/caretakers.php')) {
         .field select:focus {
             border-color: #2e8050;
             box-shadow: 0 0 0 3px rgba(46, 128, 80, .12);
+        }
+
+        .narrow-form {
+            max-width: 520px;
         }
 
         .help {
@@ -804,10 +1000,40 @@ if (is_file(__DIR__ . '/caretakers.php')) {
         }
 
         @media (max-width: 760px) {
+            .menu-toggle {
+                display: inline-flex;
+            }
+
+            /* Sidebar becomes a slide-in menu */
+            .js-sidebar {
+                position: fixed !important;
+                top: 0;
+                left: 0;
+                bottom: 0;
+                height: 100vh !important;
+                width: 260px;
+                max-width: 82vw;
+                z-index: 1100;
+                transform: translateX(-100%);
+                transition: transform .25s ease;
+            }
+
+            body.sidebar-open .js-sidebar {
+                transform: translateX(0);
+            }
+
+            body.sidebar-open .sidebar-backdrop {
+                display: block;
+            }
+
+            body.sidebar-open {
+                overflow: hidden;
+            }
+
             .app-main {
                 margin-left: 0 !important;
                 width: 100% !important;
-                padding: 18px 12px !important;
+                padding: 70px 12px 18px !important;
             }
 
             .cards {
@@ -829,6 +1055,20 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             .panel {
                 padding: 17px;
             }
+
+            .actions .btn {
+                width: 100%;
+            }
+
+            .back-to-top {
+                right: 14px;
+                bottom: 14px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            .js-sidebar, .back-to-top { transition: none; }
         }
     </style>
 </head>
@@ -842,6 +1082,10 @@ if (is_file(__DIR__ . '/caretakers.php')) {
  */
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
+
+<button type="button" class="menu-toggle" id="menuToggle"
+        aria-label="Open menu" aria-expanded="false">&#9776;</button>
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
 <header class="page-heading">
     <div>
@@ -889,11 +1133,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 <span>Maintain the list of care levels used by the facility.</span>
             </a>
 
-            <a class="setting-card" href="settings.php?section=tasks">
-                <strong>Task Categories</strong>
-                <span>Maintain categories used to organize care tasks.</span>
-            </a>
-
             <a class="setting-card" href="settings.php?section=notifications">
                 <strong>Notification Settings</strong>
                 <span>Save preferences for alerts and reminders.</span>
@@ -909,11 +1148,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
         </p>
 
         <div class="cards">
-
-            <a class="setting-card" href="<?= settingsEscape($adminLink) ?>">
-                <strong>Admin Accounts</strong>
-                <span>Open the existing administrator account module.</span>
-            </a>
 
             <a class="setting-card" href="<?= settingsEscape($caretakerLink) ?>">
                 <strong>Caretaker Accounts</strong>
@@ -931,19 +1165,19 @@ require_once __DIR__ . '/../includes/sidebar.php';
     <section class="panel">
         <h2>Security and Activity</h2>
         <p class="description">
-            Review account security and changes made through Settings.
+            Manage passwords and review changes made through Settings.
         </p>
 
         <div class="cards">
 
             <a class="setting-card" href="settings.php?section=password">
                 <strong>Change Password</strong>
-                <span>View password-change information for your account.</span>
+                <span>Change the password of your own account.</span>
             </a>
 
-            <a class="setting-card" href="settings.php?section=login-history">
-                <strong>Login History</strong>
-                <span>Review the available activity records.</span>
+            <a class="setting-card" href="settings.php?section=forgot-password">
+                <strong>Forgot Password</strong>
+                <span>Set a new password for an account whose owner forgot it.</span>
             </a>
 
             <a class="setting-card" href="settings.php?section=activity">
@@ -1078,16 +1312,15 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </form>
         </section>
 
-    <?php elseif ($section === 'care-levels' || $section === 'tasks'): ?>
+    <?php elseif ($section === 'care-levels'): ?>
 
         <?php
-        $isCare = $section === 'care-levels';
-        $listKey = $isCare ? 'care_levels' : 'task_categories';
-        $items = $isCare ? $careLevels : $taskCategories;
+        $listKey = 'care_levels';
+        $items = $careLevels;
         ?>
 
         <section class="panel">
-            <h2><?= $isCare ? 'Care Levels' : 'Task Categories' ?></h2>
+            <h2>Care Levels</h2>
 
             <p class="description">
                 Enter one item per line. Empty lines are ignored and duplicates are removed.
@@ -1100,7 +1333,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
                 <div class="field">
                     <label for="list_values">
-                        <?= $isCare ? 'Care Levels' : 'Task Categories' ?>
+                        Care Levels
                     </label>
 
                     <textarea id="list_values" name="list_values" required><?= settingsEscape(implode("\n", $items)) ?></textarea>
@@ -1154,7 +1387,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </form>
         </section>
 
-    <?php elseif ($section === 'admins' || $section === 'caretakers'): ?>
+    <?php elseif ($section === 'caretakers'): ?>
 
         <section class="panel">
             <h2><?= settingsEscape($sections[$section]) ?></h2>
@@ -1163,15 +1396,9 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 Open the existing account-management module to manage accounts.
             </p>
 
-            <?php if ($section === 'admins'): ?>
-                <a class="btn" href="<?= settingsEscape($adminLink) ?>">
-                    Open Admin Accounts
-                </a>
-            <?php else: ?>
-                <a class="btn" href="<?= settingsEscape($caretakerLink) ?>">
-                    Open Caretaker Accounts
-                </a>
-            <?php endif; ?>
+            <a class="btn" href="<?= settingsEscape($caretakerLink) ?>">
+                Open Caretaker Accounts
+            </a>
         </section>
 
     <?php elseif ($section === 'permissions'): ?>
@@ -1273,55 +1500,80 @@ require_once __DIR__ . '/../includes/sidebar.php';
             <h2>Change Password</h2>
 
             <p class="description">
-                Password updates must use the same password-hashing method as your login system.
-                This Settings page does not change your password until the authentication code and user-table structure are verified.
+                Enter your current password, then choose a new one (at least 8 characters).
             </p>
 
-            <p>
-                Do not store a plain-text password in the database. A safe password update needs to verify your current password and use PHP's password hashing functions.
-            </p>
+            <form method="post" class="narrow-form" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
+                <input type="hidden" name="action" value="change_password">
 
-            <a class="btn secondary" href="/homefor_thetander/admin/dashboard.php">
-                Return to Dashboard
-            </a>
+                <div class="field">
+                    <label for="current_password">Current Password</label>
+                    <input id="current_password" name="current_password" type="password"
+                           autocomplete="current-password" required>
+                </div>
+
+                <div class="field">
+                    <label for="new_password">New Password</label>
+                    <input id="new_password" name="new_password" type="password"
+                           minlength="8" maxlength="200" autocomplete="new-password" required>
+                </div>
+
+                <div class="field">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <input id="confirm_password" name="confirm_password" type="password"
+                           minlength="8" maxlength="200" autocomplete="new-password" required>
+                </div>
+
+                <div class="actions">
+                    <button class="btn" type="submit">Change Password</button>
+                    <a class="btn secondary" href="settings.php?section=forgot-password">
+                        Forgot password?
+                    </a>
+                </div>
+            </form>
         </section>
 
-    <?php elseif ($section === 'login-history'): ?>
+    <?php elseif ($section === 'forgot-password'): ?>
 
         <section class="panel">
-            <h2>Login History</h2>
+            <h2>Forgot Password</h2>
 
             <p class="description">
-                This page does not assume a login-history table exists. The table below displays Settings activity, not successful login events.
+                If a staff member forgot their password, set a new one for their account here.
+                Share it with them securely and ask them to change it after signing in.
+                Passwords are stored hashed, so the old one can never be viewed.
             </p>
 
-            <?php if (!$activityRows): ?>
-                <p>No activity recorded yet.</p>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>User ID</th>
-                                <th>Action</th>
-                                <th>Details</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
+            <form method="post" class="narrow-form" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
+                <input type="hidden" name="action" value="reset_password">
 
-                        <tbody>
-                            <?php foreach ($activityRows as $row): ?>
-                                <tr>
-                                    <td><?= settingsEscape($row['user_id']) ?></td>
-                                    <td><?= settingsEscape($row['action']) ?></td>
-                                    <td><?= settingsEscape($row['details']) ?></td>
-                                    <td><?= settingsEscape($row['created_at']) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                <div class="field">
+                    <label for="target_account">Account (<?= settingsEscape($accountLookupCol) ?>)</label>
+                    <input id="target_account" name="target_account" type="text"
+                           maxlength="200" autocomplete="off" required>
                 </div>
-            <?php endif; ?>
+
+                <div class="field">
+                    <label for="reset_new_password">New Password</label>
+                    <input id="reset_new_password" name="new_password" type="password"
+                           minlength="8" maxlength="200" autocomplete="new-password" required>
+                </div>
+
+                <div class="field">
+                    <label for="reset_confirm_password">Confirm New Password</label>
+                    <input id="reset_confirm_password" name="confirm_password" type="password"
+                           minlength="8" maxlength="200" autocomplete="new-password" required>
+                </div>
+
+                <div class="actions">
+                    <button class="btn" type="submit"
+                            onclick="return confirm('Reset the password for this account?');">
+                        Reset Password
+                    </button>
+                </div>
+            </form>
         </section>
 
     <?php elseif ($section === 'activity'): ?>
@@ -1371,40 +1623,100 @@ require_once __DIR__ . '/../includes/sidebar.php';
     Settings changes are saved to the database.
 </p>
 
-<!-- Puts the logo at the top of the sidebar and hides the old text title -->
+<button type="button" class="back-to-top" id="backToTop" aria-label="Back to top">&uarr;</button>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var sidebar = document.querySelector(
-        '.app-sidebar, .sidebar, #sidebar, .sidebar-container, aside, nav'
-    );
+    /* ---- Find the real sidebar (checked in priority order) ---- */
+    var sidebar = null;
+    ['.app-sidebar', '.sidebar', '#sidebar', '.sidebar-container', 'aside', 'nav']
+        .some(function (selector) {
+            sidebar = document.querySelector(selector);
+            return !!sidebar;
+        });
 
-    if (!sidebar) {
-        return;
+    var toggle   = document.getElementById('menuToggle');
+    var backdrop = document.getElementById('sidebarBackdrop');
+
+    function setMenu(open) {
+        document.body.classList.toggle('sidebar-open', open);
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+            toggle.innerHTML = open ? '&times;' : '&#9776;';
+        }
     }
 
-    // Hide the old text title and subtitle
-    var oldTexts = ['home for the aged', 'care management system'];
+    if (sidebar) {
+        sidebar.classList.add('js-sidebar');
 
-    sidebar.querySelectorAll('*').forEach(function (el) {
-        if (
-            el.children.length === 0 &&
-            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-        ) {
-            el.style.display = 'none';
+        /* Hide the old text title and subtitle */
+        var oldTexts = ['home for the aged', 'care management system'];
+
+        sidebar.querySelectorAll('*').forEach(function (el) {
+            if (
+                el.children.length === 0 &&
+                oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+            ) {
+                el.style.display = 'none';
+            }
+        });
+
+        /* Add the logo at the top of the sidebar */
+        if (!sidebar.querySelector('.sidebar-logo')) {
+            var logo = document.createElement('div');
+            logo.className = 'sidebar-logo';
+            logo.innerHTML =
+                '<a href="/homefor_thetander/admin/dashboard.php">' +
+                '<img src="/homefor_thetander/images/white1.png" ' +
+                'alt="Home for the Aged - Care, Comfort, Dignity">' +
+                '</a>';
+
+            sidebar.insertBefore(logo, sidebar.firstChild);
         }
+
+        /* Close the mobile menu after choosing a link */
+        sidebar.addEventListener('click', function (e) {
+            if (e.target.closest('a')) {
+                setMenu(false);
+            }
+        });
+    }
+
+    if (toggle) {
+        toggle.addEventListener('click', function () {
+            setMenu(!document.body.classList.contains('sidebar-open'));
+        });
+    }
+
+    if (backdrop) {
+        backdrop.addEventListener('click', function () { setMenu(false); });
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { setMenu(false); }
     });
 
-    // Add the logo
-    if (!sidebar.querySelector('.sidebar-logo')) {
-        var logo = document.createElement('div');
-        logo.className = 'sidebar-logo';
-        logo.innerHTML =
-            '<a href="/homefor_thetander/admin/dashboard.php">' +
-            '<img src="/homefor_thetander/images/white1.png" ' +
-            'alt="Home for the Aged - Care, Comfort, Dignity">' +
-            '</a>';
+    /* Leaving mobile width closes the menu */
+    window.addEventListener('resize', function () {
+        if (window.innerWidth > 760) { setMenu(false); }
+    });
 
-        sidebar.insertBefore(logo, sidebar.firstChild);
+    /* ---- Back-to-top button ---- */
+    var topBtn = document.getElementById('backToTop');
+
+    function updateTopBtn() {
+        var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+        topBtn.classList.toggle('show', y > 300);
+    }
+
+    if (topBtn) {
+        window.addEventListener('scroll', updateTopBtn, { passive: true });
+        updateTopBtn();
+
+        topBtn.addEventListener('click', function () {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
     }
 });
 </script>
