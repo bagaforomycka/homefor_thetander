@@ -1016,7 +1016,7 @@ $scheduleNotice = [
             <a href="caretakers_staff.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
                 <span class="quick-action-text">
-                    <strong>Manage Caretakers & Staff</strong>
+                    <strong>Manage Caretakers </strong>
                     <small>Staff accounts and roles</small>
                 </span>
             </a>
