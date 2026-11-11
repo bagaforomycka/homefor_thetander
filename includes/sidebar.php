@@ -962,13 +962,6 @@ if (!function_exists('sidebarLink')) {
                 'reports.php',
                 $currentPage
             );
-
-            sidebarLink(
-                '/homefor_thetander/admin/incident_reports.php',
-                'Incident Reports',
-                'incident_reports.php',
-                $currentPage
-            );
             ?>
 
             <div class="sidebar-section">System</div>
