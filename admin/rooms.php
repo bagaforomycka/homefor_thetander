@@ -161,7 +161,7 @@ try {
         }
 
         .page-heading p {
-            color: #61796a;
+            color: #0f2718;
             margin: 0;
             font-size: 13px;
         }

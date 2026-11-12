@@ -194,7 +194,7 @@ $scheduleNotice = [
             margin: 0;
             background: #eef1ee;
             font-family: Arial, sans-serif;
-            color: #303830;
+            color: #dfeedf;
             display: flex;
             min-height: 100vh;
         }
@@ -347,14 +347,14 @@ $scheduleNotice = [
         }
 
         .page-header h2 {
-            color: #174d2b;
+            color: #17683a;
             font-size: 25px;
             font-weight: 700;
             margin-bottom: 5px;
         }
 
         .page-header p {
-            color: #626b63;
+            color: #174d2b;
             font-size: 13px;
             margin: 0;
         }

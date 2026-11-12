@@ -113,7 +113,7 @@ try {
             --green: #17683a;
             --light-green: #33b960;
             --pale-green: #edf7ef;
-            --text: #304b3b;
+            --text: #0c2717;
         }
 
         * {
