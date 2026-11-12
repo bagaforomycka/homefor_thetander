@@ -1,3 +1,4 @@
+
 <?php
 session_start();
 
@@ -57,7 +58,8 @@ try {
     $error = 'Unable to check the residents database table.';
 }
 
-/* Handle profile picture upload or replacement. */
+/* HANDLE PROFILE PICTURE UPLOAD */
+
 if (
     !$error &&
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
@@ -177,7 +179,8 @@ if (
     }
 }
 
-/* Archive resident instead of permanently deleting. */
+/* ARCHIVE RESIDENT */
+
 if (
     !$error &&
     $_SERVER['REQUEST_METHOD'] === 'POST' &&
@@ -234,7 +237,8 @@ if (
     }
 }
 
-/* Load residents and assigned caretaker names. */
+/* LOAD RESIDENTS */
+
 if (!$error) {
     $sql = "
         SELECT
@@ -311,9 +315,11 @@ if (!$error) {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Resident Management - Home for the Aged</title>
 
     <link
@@ -335,7 +341,6 @@ if (!$error) {
             min-height: 100vh;
         }
 
-        /* MAIN CONTENT LAYOUT */
         .main-content {
             width: 100%;
             max-width: 100%;
@@ -345,7 +350,6 @@ if (!$error) {
             transition: margin-left 0.3s ease;
         }
 
-        /* SIDEBAR TOGGLE BUTTON STYLES */
         .sidebar-toggle-btn {
             background: rgba(255, 255, 255, 0.15);
             border: 1px solid rgba(255, 255, 255, 0.3);
@@ -384,7 +388,6 @@ if (!$error) {
             justify-content: flex-start;
         }
 
-        /* SIDEBAR OVERLAY FOR MOBILE */
         .sidebar-overlay {
             position: fixed;
             top: 0;
@@ -400,7 +403,6 @@ if (!$error) {
             display: block;
         }
 
-        /* SIDEBAR DEFAULT & COMPACT/FOLDED BEHAVIOR */
         .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
             width: 260px;
             min-width: 260px;
@@ -412,7 +414,6 @@ if (!$error) {
             flex-direction: column;
         }
 
-        /* DESKTOP FOLDED STATE */
         @media (min-width: 993px) {
             body.sidebar-folded .sidebar,
             body.sidebar-folded #sidebar,
@@ -423,7 +424,6 @@ if (!$error) {
                 min-width: 70px;
             }
 
-            /* Hide everything except the toggle button wrapper when folded */
             body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
             body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
             body.sidebar-folded .sidebar-container > *:not(.sidebar-toggle-wrapper),
@@ -432,7 +432,6 @@ if (!$error) {
                 display: none !important;
             }
 
-            /* Center button in the 70px bar when folded */
             body.sidebar-folded .sidebar-toggle-wrapper {
                 display: flex !important;
                 justify-content: center !important;
@@ -442,7 +441,6 @@ if (!$error) {
             }
         }
 
-        /* MOBILE SIDEBAR BEHAVIOR */
         @media (max-width: 992px) {
             .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
                 position: fixed;
@@ -593,24 +591,58 @@ if (!$error) {
             margin-top: 14px;
         }
 
-        /* View, Edit, and Delete buttons */
-        .btn-resident-view,
-        .btn-resident-edit,
-        .btn-resident-delete {
-            color: #198754;
-            background: #ffffff;
-            border: 1px solid #198754;
+        /* VIEW BUTTON - GREEN BORDER */
+        .resident-actions a.btn-resident-view {
+            color: #17683a !important;
+            background-color: #ffffff !important;
+            border: 2px solid #198754 !important;
             font-size: 13px;
             padding: 5px 12px;
-            transition: 0.2s ease;
+            border-radius: 6px;
+            box-shadow: none !important;
         }
 
-        .btn-resident-view:hover,
-        .btn-resident-edit:hover,
-        .btn-resident-delete:hover {
-            color: #ffffff;
-            background: #198754;
-            border-color: #198754;
+        .resident-actions a.btn-resident-view:hover,
+        .resident-actions a.btn-resident-view:focus {
+            color: #ffffff !important;
+            background-color: #198754 !important;
+            border: 2px solid #198754 !important;
+        }
+
+        /* EDIT BUTTON - YELLOW BORDER */
+        .resident-actions a.btn-resident-edit {
+            color: #8a6d00 !important;
+            background-color: #ffffff !important;
+            border: 2px solid #e0b400 !important;
+            font-size: 13px;
+            padding: 5px 12px;
+            border-radius: 6px;
+            box-shadow: none !important;
+        }
+
+        .resident-actions a.btn-resident-edit:hover,
+        .resident-actions a.btn-resident-edit:focus {
+            color: #303030 !important;
+            background-color: #ffdf70 !important;
+            border: 2px solid #d6a900 !important;
+        }
+
+        /* ARCHIVE BUTTON - RED BORDER */
+        .resident-actions button.btn-resident-delete {
+            color: #b02a37 !important;
+            background-color: #ffffff !important;
+            border: 2px solid #dc3545 !important;
+            font-size: 13px;
+            padding: 5px 12px;
+            border-radius: 6px;
+            box-shadow: none !important;
+        }
+
+        .resident-actions button.btn-resident-delete:hover,
+        .resident-actions button.btn-resident-delete:focus {
+            color: #ffffff !important;
+            background-color: #dc3545 !important;
+            border: 2px solid #dc3545 !important;
         }
 
         .btn-picture {
@@ -651,6 +683,7 @@ if (!$error) {
         }
     </style>
 </head>
+
 <body>
 
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -659,271 +692,169 @@ if (!$error) {
 
 <div class="main-content">
 
-<div class="residents-header d-flex justify-content-between align-items-center flex-wrap gap-3">
-    <div>
-        <h1>Resident Management</h1>
-        <p>View and manage resident information and room assignments.</p>
+    <div class="residents-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <h1>Resident Management</h1>
+            <p>View and manage resident information and room assignments.</p>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="add_resident.php" class="btn btn-success">
+                + Add Resident
+            </a>
+        </div>
     </div>
 
-    <div class="d-flex gap-2 flex-wrap">
-       
-
-        <a href="add_resident.php" class="btn btn-success">
-            + Add Resident
-        </a>
-    </div>
-</div>
-
-<?php if ($success === 'added'): ?>
-    <div class="alert alert-success">Resident added successfully.</div>
-<?php elseif ($success === 'updated'): ?>
-    <div class="alert alert-success">Resident updated successfully.</div>
-<?php elseif ($success === 'deleted'): ?>
-    <div class="alert alert-success">Resident archived successfully.</div>
-<?php elseif ($success === 'picture'): ?>
-    <div class="alert alert-success">Resident profile picture uploaded successfully.</div>
-<?php endif; ?>
-
-<?php if ($error !== ''): ?>
-    <div class="alert alert-danger"><?= h($error) ?></div>
-<?php endif; ?>
-
-<div class="residents-panel residents-search-panel">
-    <form method="GET" action="residents.php"
-          class="d-flex flex-wrap gap-2 align-items-center">
-
-        <input
-            type="text"
-            name="search"
-            class="form-control flex-grow-1"
-            style="min-width:220px"
-            placeholder="Search resident, ID, room, or caretaker..."
-            value="<?= h($search) ?>"
-        >
-
-        <select name="status" class="form-select"
-                style="width:auto;min-width:170px">
-
-            <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>
-                All statuses
-            </option>
-
-            <option value="new" <?= $statusFilter === 'new' ? 'selected' : '' ?>>
-                New
-            </option>
-
-            <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>
-                Active
-            </option>
-
-            <option value="needs_attention" <?= $statusFilter === 'needs_attention' ? 'selected' : '' ?>>
-                Needs Attention
-            </option>
-
-            <option value="discharged" <?= $statusFilter === 'discharged' ? 'selected' : '' ?>>
-                Discharged
-            </option>
-
-            <option value="archived" <?= $statusFilter === 'archived' ? 'selected' : '' ?>>
-                Archived
-            </option>
-        </select>
-
-        <button type="submit" class="btn btn-success">
-            Search / Filter
-        </button>
-
-        <a href="residents.php" class="btn btn-outline-secondary">
-            Reset
-        </a>
-    </form>
-</div>
-
-<div class="residents-panel">
-
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <h2 class="h5 mb-0">Resident List</h2>
-        <span class="text-secondary">
-            <?= count($residents) ?> resident(s)
-        </span>
-    </div>
+    <?php if ($success === 'added'): ?>
+        <div class="alert alert-success">Resident added successfully.</div>
+    <?php elseif ($success === 'updated'): ?>
+        <div class="alert alert-success">Resident updated successfully.</div>
+    <?php elseif ($success === 'deleted'): ?>
+        <div class="alert alert-success">Resident archived successfully.</div>
+    <?php elseif ($success === 'picture'): ?>
+        <div class="alert alert-success">Resident profile picture uploaded successfully.</div>
+    <?php endif; ?>
 
     <?php if ($error !== ''): ?>
+        <div class="alert alert-danger"><?= h($error) ?></div>
+    <?php endif; ?>
 
-        <div class="alert alert-warning mb-0">
-            Residents could not be displayed because of a database error.
+    <div class="residents-panel residents-search-panel">
+        <form method="GET" action="residents.php"
+              class="d-flex flex-wrap gap-2 align-items-center">
+
+            <input
+                type="text"
+                name="search"
+                class="form-control flex-grow-1"
+                style="min-width:220px"
+                placeholder="Search resident, ID, room, or caretaker..."
+                value="<?= h($search) ?>"
+            >
+
+            <select name="status" class="form-select"
+                    style="width:auto;min-width:170px">
+
+                <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>
+                    All statuses
+                </option>
+
+                <option value="new" <?= $statusFilter === 'new' ? 'selected' : '' ?>>
+                    New
+                </option>
+
+                <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>
+                    Active
+                </option>
+
+                <option value="needs_attention" <?= $statusFilter === 'needs_attention' ? 'selected' : '' ?>>
+                    Needs Attention
+                </option>
+
+                <option value="discharged" <?= $statusFilter === 'discharged' ? 'selected' : '' ?>>
+                    Discharged
+                </option>
+
+                <option value="archived" <?= $statusFilter === 'archived' ? 'selected' : '' ?>>
+                    Archived
+                </option>
+            </select>
+
+            <button type="submit" class="btn btn-success">
+                Search / Filter
+            </button>
+
+            <a href="residents.php" class="btn btn-outline-secondary">
+                Reset
+            </a>
+        </form>
+    </div>
+
+    <div class="residents-panel">
+
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h2 class="h5 mb-0">Resident List</h2>
+            <span class="text-secondary">
+                <?= count($residents) ?> resident(s)
+            </span>
         </div>
 
-    <?php elseif (empty($residents)): ?>
+        <?php if ($error !== ''): ?>
 
-        <div class="alert alert-info mb-0">
-            No residents found. Add a resident or change your search.
-        </div>
+            <div class="alert alert-warning mb-0">
+                Residents could not be displayed because of a database error.
+            </div>
 
-    <?php else: ?>
+        <?php elseif (empty($residents)): ?>
 
-        <?php foreach ($residents as $resident): ?>
+            <div class="alert alert-info mb-0">
+                No residents found. Add a resident or change your search.
+            </div>
 
-            <?php
-            $fullName = trim(
-                ($resident['first_name'] ?? '') . ' ' .
-                ($resident['middle_name'] ?? '') . ' ' .
-                ($resident['last_name'] ?? '')
-            );
+        <?php else: ?>
 
-            $fullName = preg_replace('/\s+/', ' ', $fullName);
+            <?php foreach ($residents as $resident): ?>
 
-            $status = strtolower($resident['status'] ?? '');
-            $statusLabel = ucwords(str_replace('_', ' ', $status));
+                <?php
+                $fullName = trim(
+                    ($resident['first_name'] ?? '') . ' ' .
+                    ($resident['middle_name'] ?? '') . ' ' .
+                    ($resident['last_name'] ?? '')
+                );
 
-            $profilePicture = residentPicture(
-                $resident['profile_picture'] ?? ''
-            );
+                $fullName = preg_replace('/\s+/', ' ', $fullName);
 
-            $hasPicture = !empty($resident['profile_picture']);
-            ?>
+                $status = strtolower($resident['status'] ?? '');
+                $statusLabel = ucwords(str_replace('_', ' ', $status));
 
-            <div class="resident-card">
+                $profilePicture = residentPicture(
+                    $resident['profile_picture'] ?? ''
+                );
 
-                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                $hasPicture = !empty($resident['profile_picture']);
+                ?>
 
-                    <div class="resident-profile">
+                <div class="resident-card">
 
-                        <img
-                            src="<?= h($profilePicture) ?>"
-                            alt="<?= h($fullName) ?> profile picture"
-                            class="resident-profile-picture"
-                            onerror="this.onerror=null;this.src='../images/default-profile.png';"
-                        >
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
 
-                        <div class="resident-profile-info">
-                            <h3><?= h($fullName) ?></h3>
+                        <div class="resident-profile">
 
-                            <div class="resident-meta">
-                                Resident ID: <?= h($resident['resident_id']) ?>
-                                 | 
-                                Room: <?= h($resident['room_number'] ?: 'Not assigned') ?>
-                                 | 
-                                Gender: <?= h($resident['gender'] ?: 'Not specified') ?>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <span class="resident-status <?= h($status) ?>">
-                        <?= h($statusLabel ?: 'Unspecified') ?>
-                    </span>
-
-                </div>
-
-                <?php if ($isAdmin): ?>
-                    <form
-                        method="POST"
-                        action="residents.php"
-                        enctype="multipart/form-data"
-                        class="picture-upload-form"
-                    >
-                        <input type="hidden" name="action" value="upload_picture">
-
-                        <input
-                            type="hidden"
-                            name="csrf_token"
-                            value="<?= h($csrf) ?>"
-                        >
-
-                        <input
-                            type="hidden"
-                            name="resident_id"
-                            value="<?= (int)$resident['id'] ?>"
-                        >
-
-                        <div class="d-flex flex-wrap align-items-center gap-2">
-                            <input
-                                type="file"
-                                name="profile_picture"
-                                class="form-control form-control-sm"
-                                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                                required
+                            <img
+                                src="<?= h($profilePicture) ?>"
+                                alt="<?= h($fullName) ?> profile picture"
+                                class="resident-profile-picture"
+                                onerror="this.onerror=null;this.src='../images/default-profile.png';"
                             >
 
-                            <button type="submit" class="btn btn-picture btn-sm">
-                                <?= $hasPicture ? 'Replace Picture' : 'Upload Picture' ?>
-                            </button>
+                            <div class="resident-profile-info">
+                                <h3><?= h($fullName) ?></h3>
+
+                                <div class="resident-meta">
+                                    Resident ID: <?= h($resident['resident_id']) ?>
+                                    &nbsp;|&nbsp;
+                                    Room: <?= h($resident['room_number'] ?: 'Not assigned') ?>
+                                    &nbsp;|&nbsp;
+                                    Gender: <?= h($resident['gender'] ?: 'Not specified') ?>
+                                </div>
+                            </div>
+
                         </div>
 
-                        <small class="text-secondary">
-                            JPG, PNG, or WEBP. Maximum file size: 5 MB.
-                        </small>
-                    </form>
-                <?php endif; ?>
+                        <span class="resident-status <?= h($status) ?>">
+                            <?= h($statusLabel ?: 'Unspecified') ?>
+                        </span>
 
-                <div class="row g-2 mt-2">
-
-                    <div class="col-md-6">
-                        <div class="resident-detail">
-                            <strong>Date of Birth:</strong>
-                            <?= h($resident['date_of_birth'] ?: 'Not recorded') ?>
-                        </div>
                     </div>
-
-                    <div class="col-md-6">
-                        <div class="resident-detail">
-                            <strong>Contact Number:</strong>
-                            <?= h($resident['contact_number'] ?: 'Not provided') ?>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="resident-detail">
-                            <strong>Admission Date:</strong>
-                            <?= h($resident['admission_date'] ?: 'Not recorded') ?>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="resident-detail">
-                            <strong>Care Level:</strong>
-                            <?= h($resident['care_level'] ?: 'Not specified') ?>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="resident-detail">
-                            <strong>Assigned Caretaker:</strong>
-                            <?= h($resident['caretaker_name'] ?: 'Not assigned') ?>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="resident-detail">
-                            <strong>Address:</strong>
-                            <?= h($resident['address'] ?: 'Not provided') ?>
-                        </div>
-                    </div>
-
-                </div>
-
-                <div class="resident-actions">
-
-                    <a
-                        href="view_resident.php?id=<?= (int)$resident['id'] ?>"
-                        class="btn btn-resident-view"
-                    >View</a>
-
-                    <a
-                        href="add_resident.php?edit=<?= (int)$resident['id'] ?>"
-                        class="btn btn-resident-edit"
-                    >Edit</a>
 
                     <?php if ($isAdmin): ?>
-
                         <form
                             method="POST"
                             action="residents.php"
-                            class="d-inline"
-                            onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');"
+                            enctype="multipart/form-data"
+                            class="picture-upload-form"
                         >
-                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="action" value="upload_picture">
 
                             <input
                                 type="hidden"
@@ -937,31 +868,134 @@ if (!$error) {
                                 value="<?= (int)$resident['id'] ?>"
                             >
 
-                            <button type="submit" class="btn btn-resident-delete">
-                                Archive
-                            </button>
-                        </form>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <input
+                                    type="file"
+                                    name="profile_picture"
+                                    class="form-control form-control-sm"
+                                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                    required
+                                >
 
+                                <button type="submit" class="btn btn-picture btn-sm">
+                                    <?= $hasPicture ? 'Replace Picture' : 'Upload Picture' ?>
+                                </button>
+                            </div>
+
+                            <small class="text-secondary">
+                                JPG, PNG, or WEBP. Maximum file size: 5 MB.
+                            </small>
+                        </form>
                     <?php endif; ?>
+
+                    <div class="row g-2 mt-2">
+
+                        <div class="col-md-6">
+                            <div class="resident-detail">
+                                <strong>Date of Birth:</strong>
+                                <?= h($resident['date_of_birth'] ?: 'Not recorded') ?>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="resident-detail">
+                                <strong>Contact Number:</strong>
+                                <?= h($resident['contact_number'] ?: 'Not provided') ?>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="resident-detail">
+                                <strong>Admission Date:</strong>
+                                <?= h($resident['admission_date'] ?: 'Not recorded') ?>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="resident-detail">
+                                <strong>Care Level:</strong>
+                                <?= h($resident['care_level'] ?: 'Not specified') ?>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="resident-detail">
+                                <strong>Assigned Caretaker:</strong>
+                                <?= h($resident['caretaker_name'] ?: 'Not assigned') ?>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="resident-detail">
+                                <strong>Address:</strong>
+                                <?= h($resident['address'] ?: 'Not provided') ?>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="resident-actions">
+
+                        <a
+                            href="view_resident.php?id=<?= (int)$resident['id'] ?>"
+                            class="btn btn-resident-view"
+                        >View</a>
+
+                        <a
+                            href="add_resident.php?edit=<?= (int)$resident['id'] ?>"
+                            class="btn btn-resident-edit"
+                        >Edit</a>
+
+                        <?php if ($isAdmin): ?>
+
+                            <form
+                                method="POST"
+                                action="residents.php"
+                                class="d-inline"
+                                onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');"
+                            >
+                                <input type="hidden" name="action" value="delete">
+
+                                <input
+                                    type="hidden"
+                                    name="csrf_token"
+                                    value="<?= h($csrf) ?>"
+                                >
+
+                                <input
+                                    type="hidden"
+                                    name="resident_id"
+                                    value="<?= (int)$resident['id'] ?>"
+                                >
+
+                                <button type="submit" class="btn btn-resident-delete">
+                                    Archive
+                                </button>
+                            </form>
+
+                        <?php endif; ?>
+
+                    </div>
 
                 </div>
 
-            </div>
+            <?php endforeach; ?>
 
-        <?php endforeach; ?>
+        <?php endif; ?>
 
-    <?php endif; ?>
-
-</div>
+    </div>
 
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- Hamburger Toggle & Sidebar Behavior -->
+<!-- SIDEBAR TOGGLE -->
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
     var overlay = document.getElementById('sidebarOverlay');
+
     var sidebar = document.querySelector(
         '.sidebar, #sidebar, .sidebar-container, aside, .app-sidebar'
     );
@@ -970,8 +1004,10 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
-    // Hide old text title and subtitle
-    var oldTexts = ['home for the aged', 'care management system'];
+    var oldTexts = [
+        'home for the aged',
+        'care management system'
+    ];
 
     sidebar.querySelectorAll('*').forEach(function (el) {
         if (
@@ -982,10 +1018,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Ensure the logo sits at the top of the sidebar
     if (!sidebar.querySelector('.sidebar-logo')) {
+
         var logo = document.createElement('div');
+
         logo.className = 'sidebar-logo';
+
         logo.innerHTML =
             '<a href="dashboard.php">' +
             '<img src="../images/white1.png" ' +
@@ -995,10 +1033,12 @@ document.addEventListener('DOMContentLoaded', function () {
         sidebar.insertBefore(logo, sidebar.firstChild);
     }
 
-    // Insert Hamburger Toggle button at the top left, right above the logo
     if (!sidebar.querySelector('#sidebarToggle')) {
+
         var toggleWrapper = document.createElement('div');
+
         toggleWrapper.className = 'sidebar-toggle-wrapper';
+
         toggleWrapper.innerHTML = `
             <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
                 <span class="hamburger-line"></span>
@@ -1006,27 +1046,44 @@ document.addEventListener('DOMContentLoaded', function () {
                 <span class="hamburger-line"></span>
             </button>
         `;
+
         sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
     }
 
     var toggleBtn = document.getElementById('sidebarToggle');
+
     if (toggleBtn) {
+
         toggleBtn.addEventListener('click', function () {
+
             if (window.innerWidth <= 992) {
+
                 document.body.classList.toggle('sidebar-open');
-                if (overlay) overlay.classList.toggle('active');
+
+                if (overlay) {
+                    overlay.classList.toggle('active');
+                }
+
             } else {
+
                 document.body.classList.toggle('sidebar-folded');
+
             }
+
         });
     }
 
     if (overlay) {
+
         overlay.addEventListener('click', function () {
+
             document.body.classList.remove('sidebar-open');
+
             overlay.classList.remove('active');
+
         });
     }
+
 });
 </script>
 
