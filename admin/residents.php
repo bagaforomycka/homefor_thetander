@@ -19,6 +19,10 @@ function h($value): string
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
+/*
+ * Resident profile picture path.
+ * Files are stored in admin/uploads/residentspic/.
+ */
 function residentPicture($picture): string
 {
     $picture = trim((string)($picture ?? ''));
@@ -27,7 +31,8 @@ function residentPicture($picture): string
         return '../images/default-profile.png';
     }
 
-    $filename = basename($picture);
+    $filename = basename(str_replace('\\', '/', $picture));
+
     $physicalPath = __DIR__ . '/uploads/residentspic/' . $filename;
 
     if (!is_file($physicalPath)) {
@@ -53,6 +58,7 @@ try {
     $columnCheck = $pdo->query("SHOW COLUMNS FROM residents");
     $columns = $columnCheck->fetchAll(PDO::FETCH_COLUMN);
     $hasArchivedAt = in_array('archived_at', $columns, true);
+
 } catch (PDOException $e) {
     error_log('Resident column check error: ' . $e->getMessage());
     $error = 'Unable to check the residents database table.';
@@ -81,40 +87,71 @@ if (
 
     if (!$residentId || $residentId < 1) {
         $error = 'Invalid resident selected.';
+
     } elseif (
         !isset($_FILES['profile_picture']) ||
-        $_FILES['profile_picture']['error'] !== UPLOAD_ERR_OK
+        $_FILES['profile_picture']['error'] === UPLOAD_ERR_NO_FILE
     ) {
         $error = 'Please select a picture to upload.';
+
     } else {
         $file = $_FILES['profile_picture'];
 
-        if ($file['size'] > 5 * 1024 * 1024) {
-            $error = 'The picture must not exceed 5 MB.';
-        } else {
-            $imageInfo = @getimagesize($file['tmp_name']);
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $error = 'There was a problem uploading the picture. Please try again.';
 
+        } elseif ($file['size'] > 5 * 1024 * 1024) {
+            $error = 'The picture must not exceed 5 MB.';
+
+        } elseif (!is_uploaded_file($file['tmp_name'])) {
+            $error = 'Invalid picture upload.';
+
+        } else {
+
+            /*
+             * Check the real image MIME type.
+             * Do not rely only on the file extension.
+             */
             $allowedTypes = [
                 'image/jpeg' => 'jpg',
                 'image/png' => 'png',
-                'image/webp' => 'webp'
+                'image/webp' => 'webp',
+                'image/gif' => 'gif',
+                'image/bmp' => 'bmp',
+                'image/x-ms-bmp' => 'bmp'
             ];
 
-            $mimeType = $imageInfo['mime'] ?? '';
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mimeType = $finfo->file($file['tmp_name']);
 
-            if (!$imageInfo || !isset($allowedTypes[$mimeType])) {
-                $error = 'Only JPG, PNG, and WEBP images are allowed.';
+            $imageInfo = @getimagesize($file['tmp_name']);
+
+            if (
+                !$imageInfo ||
+                !isset($allowedTypes[$mimeType])
+            ) {
+                $error = 'Unsupported image. Please upload JPG, JPEG, PNG, WEBP, GIF, or BMP.';
+
             } else {
+
                 $uploadDirectory = __DIR__ . '/uploads/residentspic/';
 
                 if (
                     !is_dir($uploadDirectory) &&
-                    !mkdir($uploadDirectory, 0755, true)
+                    !mkdir($uploadDirectory, 0755, true) &&
+                    !is_dir($uploadDirectory)
                 ) {
                     $error = 'Unable to create the picture upload folder.';
+
                 } else {
+
                     $extension = $allowedTypes[$mimeType];
-                    $newFilename = 'resident_' . bin2hex(random_bytes(16)) . '.' . $extension;
+
+                    $newFilename = 'resident_' .
+                        bin2hex(random_bytes(16)) .
+                        '.' .
+                        $extension;
+
                     $destination = $uploadDirectory . $newFilename;
 
                     try {
@@ -125,14 +162,25 @@ if (
                             LIMIT 1
                         ");
 
-                        $checkResident->execute(['id' => $residentId]);
+                        $checkResident->execute([
+                            'id' => $residentId
+                        ]);
+
                         $existingResident = $checkResident->fetch(PDO::FETCH_ASSOC);
 
                         if (!$existingResident) {
                             $error = 'Resident not found.';
-                        } elseif (!move_uploaded_file($file['tmp_name'], $destination)) {
+
+                        } elseif (
+                            !move_uploaded_file(
+                                $file['tmp_name'],
+                                $destination
+                            )
+                        ) {
                             $error = 'Unable to save the uploaded picture.';
+
                         } else {
+
                             try {
                                 $updatePicture = $pdo->prepare("
                                     UPDATE residents
@@ -145,8 +193,16 @@ if (
                                     'id' => $residentId
                                 ]);
 
+                                /*
+                                 * Delete the previous picture only after
+                                 * the new picture has been saved successfully.
+                                 */
                                 $oldPicture = basename(
-                                    (string)($existingResident['profile_picture'] ?? '')
+                                    str_replace(
+                                        '\\',
+                                        '/',
+                                        (string)($existingResident['profile_picture'] ?? '')
+                                    )
                                 );
 
                                 if (
@@ -164,13 +220,19 @@ if (
                                 exit;
 
                             } catch (PDOException $e) {
-                                @unlink($destination);
+                                if (is_file($destination)) {
+                                    @unlink($destination);
+                                }
+
                                 throw $e;
                             }
                         }
 
                     } catch (PDOException $e) {
-                        error_log('Profile picture update error: ' . $e->getMessage());
+                        error_log(
+                            'Profile picture update error: ' . $e->getMessage()
+                        );
+
                         $error = 'Unable to update the resident picture. Please try again.';
                     }
                 }
@@ -202,6 +264,7 @@ if (
 
     if (!$residentId || $residentId < 1) {
         $error = 'Invalid resident selected.';
+
     } else {
         try {
             if ($hasArchivedAt) {
@@ -364,12 +427,10 @@ if (!$error) {
             width: 36px;
             height: 36px;
             margin: 12px 0;
-            transition: background 0.2s ease, border-color 0.2s ease;
         }
 
         .sidebar-toggle-btn:hover {
             background: rgba(255, 255, 255, 0.25);
-            border-color: rgba(255, 255, 255, 0.5);
         }
 
         .sidebar-toggle-btn .hamburger-line {
@@ -378,7 +439,6 @@ if (!$error) {
             height: 2px;
             background-color: #ffffff;
             border-radius: 2px;
-            transition: all 0.3s ease;
         }
 
         .sidebar-toggle-wrapper {
@@ -403,7 +463,11 @@ if (!$error) {
             display: block;
         }
 
-        .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+        .sidebar,
+        #sidebar,
+        .sidebar-container,
+        aside,
+        .app-sidebar {
             width: 260px;
             min-width: 260px;
             transition: width 0.3s ease, transform 0.3s ease;
@@ -442,7 +506,11 @@ if (!$error) {
         }
 
         @media (max-width: 992px) {
-            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar {
+            .sidebar,
+            #sidebar,
+            .sidebar-container,
+            aside,
+            .app-sidebar {
                 position: fixed;
                 top: 0;
                 left: 0;
@@ -591,7 +659,6 @@ if (!$error) {
             margin-top: 14px;
         }
 
-        /* VIEW BUTTON - GREEN BORDER */
         .resident-actions a.btn-resident-view {
             color: #17683a !important;
             background-color: #ffffff !important;
@@ -609,7 +676,6 @@ if (!$error) {
             border: 2px solid #198754 !important;
         }
 
-        /* EDIT BUTTON - YELLOW BORDER */
         .resident-actions a.btn-resident-edit {
             color: #8a6d00 !important;
             background-color: #ffffff !important;
@@ -627,7 +693,6 @@ if (!$error) {
             border: 2px solid #d6a900 !important;
         }
 
-        /* ARCHIVE BUTTON - RED BORDER */
         .resident-actions button.btn-resident-delete {
             color: #b02a37 !important;
             background-color: #ffffff !important;
@@ -670,6 +735,10 @@ if (!$error) {
         }
 
         @media (max-width: 576px) {
+            .main-content {
+                padding: 12px;
+            }
+
             .residents-header,
             .residents-panel {
                 padding: 15px;
@@ -679,6 +748,10 @@ if (!$error) {
                 width: 68px;
                 height: 68px;
                 min-width: 68px;
+            }
+
+            .resident-card h3 {
+                font-size: 16px;
             }
         }
     </style>
@@ -699,20 +772,30 @@ if (!$error) {
         </div>
 
         <div class="d-flex gap-2 flex-wrap">
-            <a href="add_resident.php" class="btn btn-success">
-                + Add Resident
-            </a>
+            <?php if ($isAdmin): ?>
+                <a href="add_resident.php" class="btn btn-success">
+                    + Add Resident
+                </a>
+            <?php endif; ?>
         </div>
     </div>
 
-    <?php if ($success === 'added'): ?>
-        <div class="alert alert-success">Resident added successfully.</div>
+    <?php if ($success === 'added' || isset($_GET['added'])): ?>
+        <div class="alert alert-success">
+            Resident added successfully.
+        </div>
     <?php elseif ($success === 'updated'): ?>
-        <div class="alert alert-success">Resident updated successfully.</div>
+        <div class="alert alert-success">
+            Resident updated successfully.
+        </div>
     <?php elseif ($success === 'deleted'): ?>
-        <div class="alert alert-success">Resident archived successfully.</div>
+        <div class="alert alert-success">
+            Resident archived successfully.
+        </div>
     <?php elseif ($success === 'picture'): ?>
-        <div class="alert alert-success">Resident profile picture uploaded successfully.</div>
+        <div class="alert alert-success">
+            Resident profile picture uploaded successfully.
+        </div>
     <?php endif; ?>
 
     <?php if ($error !== ''): ?>
@@ -720,8 +803,12 @@ if (!$error) {
     <?php endif; ?>
 
     <div class="residents-panel residents-search-panel">
-        <form method="GET" action="residents.php"
-              class="d-flex flex-wrap gap-2 align-items-center">
+
+        <form
+            method="GET"
+            action="residents.php"
+            class="d-flex flex-wrap gap-2 align-items-center"
+        >
 
             <input
                 type="text"
@@ -732,9 +819,11 @@ if (!$error) {
                 value="<?= h($search) ?>"
             >
 
-            <select name="status" class="form-select"
-                    style="width:auto;min-width:170px">
-
+            <select
+                name="status"
+                class="form-select"
+                style="width:auto;min-width:170px"
+            >
                 <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>
                     All statuses
                 </option>
@@ -767,6 +856,7 @@ if (!$error) {
             <a href="residents.php" class="btn btn-outline-secondary">
                 Reset
             </a>
+
         </form>
     </div>
 
@@ -774,6 +864,7 @@ if (!$error) {
 
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <h2 class="h5 mb-0">Resident List</h2>
+
             <span class="text-secondary">
                 <?= count($residents) ?> resident(s)
             </span>
@@ -828,6 +919,7 @@ if (!$error) {
                             >
 
                             <div class="resident-profile-info">
+
                                 <h3><?= h($fullName) ?></h3>
 
                                 <div class="resident-meta">
@@ -837,6 +929,7 @@ if (!$error) {
                                     &nbsp;|&nbsp;
                                     Gender: <?= h($resident['gender'] ?: 'Not specified') ?>
                                 </div>
+
                             </div>
 
                         </div>
@@ -848,13 +941,19 @@ if (!$error) {
                     </div>
 
                     <?php if ($isAdmin): ?>
+
                         <form
                             method="POST"
                             action="residents.php"
                             enctype="multipart/form-data"
                             class="picture-upload-form"
                         >
-                            <input type="hidden" name="action" value="upload_picture">
+
+                            <input
+                                type="hidden"
+                                name="action"
+                                value="upload_picture"
+                            >
 
                             <input
                                 type="hidden"
@@ -869,23 +968,31 @@ if (!$error) {
                             >
 
                             <div class="d-flex flex-wrap align-items-center gap-2">
+
                                 <input
                                     type="file"
                                     name="profile_picture"
                                     class="form-control form-control-sm"
-                                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                    accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/jpeg,image/png,image/webp,image/gif,image/bmp"
                                     required
                                 >
 
-                                <button type="submit" class="btn btn-picture btn-sm">
+                                <button
+                                    type="submit"
+                                    class="btn btn-picture btn-sm"
+                                >
                                     <?= $hasPicture ? 'Replace Picture' : 'Upload Picture' ?>
                                 </button>
+
                             </div>
 
                             <small class="text-secondary">
-                                JPG, PNG, or WEBP. Maximum file size: 5 MB.
+                                Accepted formats: JPG, JPEG, PNG, WEBP, GIF, and BMP.
+                                Maximum file size: 5 MB.
                             </small>
+
                         </form>
+
                     <?php endif; ?>
 
                     <div class="row g-2 mt-2">
@@ -954,7 +1061,12 @@ if (!$error) {
                                 class="d-inline"
                                 onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');"
                             >
-                                <input type="hidden" name="action" value="delete">
+
+                                <input
+                                    type="hidden"
+                                    name="action"
+                                    value="delete"
+                                >
 
                                 <input
                                     type="hidden"
@@ -968,9 +1080,13 @@ if (!$error) {
                                     value="<?= (int)$resident['id'] ?>"
                                 >
 
-                                <button type="submit" class="btn btn-resident-delete">
+                                <button
+                                    type="submit"
+                                    class="btn btn-resident-delete"
+                                >
                                     Archive
                                 </button>
+
                             </form>
 
                         <?php endif; ?>
@@ -988,8 +1104,6 @@ if (!$error) {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- SIDEBAR TOGGLE -->
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
