@@ -1,3 +1,4 @@
+
 <?php
 session_start();
 
@@ -19,6 +20,7 @@ function dashboardCount($pdo, $sql) {
     try {
         return (int) $pdo->query($sql)->fetchColumn();
     } catch (PDOException $e) {
+        error_log('Dashboard count error: ' . $e->getMessage());
         return 0;
     }
 }
@@ -28,6 +30,7 @@ function latestRecordVersion($pdo, $sql) {
         $value = $pdo->query($sql)->fetchColumn();
         return $value ? (string) $value : '';
     } catch (PDOException $e) {
+        error_log('Dashboard notification error: ' . $e->getMessage());
         return '';
     }
 }
@@ -45,6 +48,8 @@ function notificationDot($version, $key) {
         title="Dismiss notification"></button>';
 }
 
+/* DASHBOARD COUNTS */
+
 $totalResidents = dashboardCount(
     $pdo,
     "SELECT COUNT(*) FROM residents"
@@ -52,25 +57,22 @@ $totalResidents = dashboardCount(
 
 $totalCaretakers = dashboardCount(
     $pdo,
-    "SELECT COUNT(*) FROM users
-     WHERE role = 'caretaker' AND status = 'Active'"
-);
-
-$totalStaff = dashboardCount(
-    $pdo,
-    "SELECT COUNT(*) FROM users
-     WHERE role = 'staff' AND status = 'Active'"
+    "SELECT COUNT(*) FROM caretakers
+     WHERE archived_at IS NULL"
 );
 
 $availableRooms = dashboardCount(
     $pdo,
-    "SELECT COUNT(*) FROM rooms WHERE status = 'Available'"
+    "SELECT COUNT(*) FROM rooms
+     WHERE status = 'Available'"
 );
 
 $totalHealthRecords = dashboardCount(
     $pdo,
     "SELECT COUNT(*) FROM health_records"
 );
+
+/* NEW RECORD NOTIFICATIONS */
 
 $newResidents = latestRecordVersion(
     $pdo,
@@ -92,17 +94,8 @@ $newRooms = latestRecordVersion(
 
 $newCaretakers = latestRecordVersion(
     $pdo,
-    "SELECT MAX(created_at) FROM users
-     WHERE role = 'caretaker'
-     AND status = 'Active'
-     AND created_at >= NOW() - INTERVAL 1 DAY"
-);
-
-$newStaff = latestRecordVersion(
-    $pdo,
-    "SELECT MAX(created_at) FROM users
-     WHERE role = 'staff'
-     AND status = 'Active'
+    "SELECT MAX(created_at) FROM caretakers
+     WHERE archived_at IS NULL
      AND created_at >= NOW() - INTERVAL 1 DAY"
 );
 
@@ -120,6 +113,8 @@ $newSchedules = latestRecordVersion(
      AND created_at >= NOW() - INTERVAL 1 DAY"
 );
 
+/* ANNOUNCEMENTS */
+
 try {
     $announcementStmt = $pdo->query(
         "SELECT title, created_at
@@ -131,11 +126,14 @@ try {
 
     $dashboardAnnouncements =
         $announcementStmt->fetchAll(PDO::FETCH_ASSOC);
+
 } catch (PDOException $e) {
+    error_log('Dashboard announcements error: ' . $e->getMessage());
     $dashboardAnnouncements = [];
 }
 
-/* Same table as Schedules / Add Schedule, so new schedules show up here. */
+/* SCHEDULES */
+
 $isAdmin = ($_SESSION['role'] ?? '') === 'admin';
 
 if (empty($_SESSION['schedules_csrf_token'])) {
@@ -159,6 +157,7 @@ try {
 
     $dashboardSchedules =
         $scheduleStmt->fetchAll(PDO::FETCH_ASSOC);
+
 } catch (PDOException $e) {
     error_log('Dashboard schedules error: ' . $e->getMessage());
     $dashboardSchedules = [];
@@ -174,6 +173,7 @@ $scheduleNotice = [
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -208,7 +208,6 @@ $scheduleNotice = [
             transition: margin-left 0.3s ease;
         }
 
-        /* SIDEBAR TOGGLE BUTTON STYLES (Aligned Left) */
         .sidebar-toggle-btn {
             background: rgba(255, 255, 255, 0.15);
             border: 1px solid rgba(255, 255, 255, 0.3);
@@ -247,7 +246,6 @@ $scheduleNotice = [
             justify-content: flex-start;
         }
 
-        /* SIDEBAR OVERLAY FOR MOBILE */
         .sidebar-overlay {
             position: fixed;
             top: 0;
@@ -263,7 +261,6 @@ $scheduleNotice = [
             display: block;
         }
 
-        /* SIDEBAR DEFAULT & COMPACT/FOLDED BEHAVIOR */
         .sidebar, #sidebar, .sidebar-container, aside {
             width: 260px;
             min-width: 260px;
@@ -275,7 +272,6 @@ $scheduleNotice = [
             flex-direction: column;
         }
 
-        /* DESKTOP FOLDED STATE */
         @media (min-width: 993px) {
             body.sidebar-folded .sidebar,
             body.sidebar-folded #sidebar,
@@ -285,14 +281,12 @@ $scheduleNotice = [
                 min-width: 70px;
             }
 
-            /* Hide everything except the toggle button wrapper when folded */
             body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
             body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
             body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper) {
                 display: none !important;
             }
 
-            /* Center button in the 70px bar when folded */
             body.sidebar-folded .sidebar-toggle-wrapper {
                 display: flex !important;
                 justify-content: center !important;
@@ -302,7 +296,6 @@ $scheduleNotice = [
             }
         }
 
-        /* MOBILE SIDEBAR BEHAVIOR */
         @media (max-width: 992px) {
             .sidebar, #sidebar, .sidebar-container, aside {
                 position: fixed;
@@ -321,7 +314,6 @@ $scheduleNotice = [
             }
         }
 
-        /* SIDEBAR LOGO */
         .sidebar-logo {
             display: block;
             padding: 10px 4px 6px;
@@ -781,6 +773,8 @@ $scheduleNotice = [
         <p>Overview of the Home for the Aged Management System</p>
     </div>
 
+    <!-- DASHBOARD STATISTICS -->
+
     <div class="row g-3">
 
         <div class="col-6 col-xl">
@@ -809,7 +803,8 @@ $scheduleNotice = [
             <div class="stat-card">
                 <?= notificationDot($newCaretakers, 'caretakers') ?>
 
-                <a href="caretakers_staff.php" class="stat-link">
+                <!-- CORRECTED CARETAKERS LINK -->
+                <a href="caretakers.php" class="stat-link">
                     <h6>Total Caretakers</h6>
                     <h3><?= $totalCaretakers ?></h3>
                 </a>
@@ -827,18 +822,9 @@ $scheduleNotice = [
             </div>
         </div>
 
-        <div class="col-6 col-xl">
-            <div class="stat-card">
-                <?= notificationDot($newStaff, 'staff') ?>
-
-                <a href="caretakers_staff.php" class="stat-link">
-                    <h6>Active Staff</h6>
-                    <h3><?= $totalStaff ?></h3>
-                </a>
-            </div>
-        </div>
-
     </div>
+
+    <!-- ADMISSION TRACKER -->
 
     <section class="widget graph-widget">
         <div class="widget-header">
@@ -854,6 +840,8 @@ $scheduleNotice = [
             Open Admission Tracker
         </a>
     </section>
+
+    <!-- ANNOUNCEMENTS AND SCHEDULES -->
 
     <div class="dashboard-grid">
 
@@ -942,6 +930,7 @@ $scheduleNotice = [
                         ($schedule['first_name'] ?? '') . ' ' .
                         ($schedule['last_name'] ?? '')
                     );
+
                     $dashTime = !empty($schedule['start_time'])
                         ? date('g:i A', strtotime($schedule['start_time']))
                         : '';
@@ -955,35 +944,47 @@ $scheduleNotice = [
                                 <?= !empty($schedule['schedule_date'])
                                     ? h(date('M d, Y', strtotime($schedule['schedule_date'])))
                                     : 'No date' ?>
+
                                 <?= $dashTime !== '' ? '· ' . h($dashTime) : '' ?>
+
                                 <?= $dashResident !== '' ? '· ' . h($dashResident) : '' ?>
+
                                 · <?= h($schedule['schedule_type'] ?? '') ?>
                             </small>
                         </div>
 
                         <div class="schedule-item-actions">
+
                             <form method="POST" action="schedules.php">
                                 <input type="hidden" name="action" value="complete">
                                 <input type="hidden" name="return" value="dashboard">
                                 <input type="hidden" name="schedule_id" value="<?= (int) $schedule['id'] ?>">
                                 <input type="hidden" name="csrf_token" value="<?= h($scheduleCsrf) ?>">
+
                                 <button type="submit" class="schedule-btn schedule-btn-done">
                                     Mark as Done
                                 </button>
                             </form>
 
                             <?php if ($isAdmin): ?>
-                                <form method="POST" action="schedules.php"
-                                      onsubmit="return confirm('Delete this schedule? It will be moved to Archive &amp; Restore and can be restored later.');">
+
+                                <form
+                                    method="POST"
+                                    action="schedules.php"
+                                    onsubmit="return confirm('Delete this schedule? It will be moved to Archive &amp; Restore and can be restored later.');"
+                                >
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="return" value="dashboard">
                                     <input type="hidden" name="schedule_id" value="<?= (int) $schedule['id'] ?>">
                                     <input type="hidden" name="csrf_token" value="<?= h($scheduleCsrf) ?>">
+
                                     <button type="submit" class="schedule-btn schedule-btn-delete">
                                         Delete
                                     </button>
                                 </form>
+
                             <?php endif; ?>
+
                         </div>
                     </div>
 
@@ -1000,29 +1001,36 @@ $scheduleNotice = [
 
     </div>
 
+    <!-- QUICK ACTIONS -->
+
     <section class="quick-actions-section">
+
         <h5 class="quick-actions-title">Quick Actions</h5>
 
         <div class="quick-actions">
 
             <a href="residents.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
                     <strong>Add / Manage Residents</strong>
                     <small>Resident information</small>
                 </span>
             </a>
 
-            <a href="caretakers_staff.php" class="quick-action">
+            <!-- CORRECTED CARETAKERS LINK -->
+            <a href="caretakers.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
-                    <strong>Manage Caretakers </strong>
-                    <small>Staff accounts and roles</small>
+                    <strong>Manage Caretakers</strong>
+                    <small>Caretaker accounts</small>
                 </span>
             </a>
 
             <a href="rooms.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
                     <strong>Manage Rooms</strong>
                     <small>Room availability</small>
@@ -1031,6 +1039,7 @@ $scheduleNotice = [
 
             <a href="health_records.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
                     <strong>Health Records</strong>
                     <small>Resident health information</small>
@@ -1039,6 +1048,7 @@ $scheduleNotice = [
 
             <a href="announcements.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
                     <strong>Create Announcement</strong>
                     <small>Publish an announcement</small>
@@ -1047,6 +1057,7 @@ $scheduleNotice = [
 
             <a href="schedules.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
                     <strong>Create Schedule</strong>
                     <small>Organize scheduled tasks</small>
@@ -1060,10 +1071,13 @@ $scheduleNotice = [
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- Hamburger Toggle & Sidebar Behavior -->
+<!-- SIDEBAR TOGGLE -->
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
     var overlay = document.getElementById('sidebarOverlay');
+
     var sidebar = document.querySelector(
         '.sidebar, #sidebar, .sidebar-container, aside, nav'
     );
@@ -1072,8 +1086,10 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
     }
 
-    // Hide old text title and subtitle
-    var oldTexts = ['home for the aged', 'care management system'];
+    var oldTexts = [
+        'home for the aged',
+        'care management system'
+    ];
 
     sidebar.querySelectorAll('*').forEach(function (el) {
         if (
@@ -1084,10 +1100,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Ensure the logo sits at the top of the sidebar
     if (!sidebar.querySelector('.sidebar-logo')) {
+
         var logo = document.createElement('div');
+
         logo.className = 'sidebar-logo';
+
         logo.innerHTML =
             '<a href="dashboard.php">' +
             '<img src="../images/white1.png" ' +
@@ -1097,10 +1115,12 @@ document.addEventListener('DOMContentLoaded', function () {
         sidebar.insertBefore(logo, sidebar.firstChild);
     }
 
-    // Insert Hamburger Toggle button at the top left, right above the logo
     if (!sidebar.querySelector('#sidebarToggle')) {
+
         var toggleWrapper = document.createElement('div');
+
         toggleWrapper.className = 'sidebar-toggle-wrapper';
+
         toggleWrapper.innerHTML = `
             <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
                 <span class="hamburger-line"></span>
@@ -1108,29 +1128,48 @@ document.addEventListener('DOMContentLoaded', function () {
                 <span class="hamburger-line"></span>
             </button>
         `;
+
         sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
     }
 
     var toggleBtn = document.getElementById('sidebarToggle');
+
     if (toggleBtn) {
+
         toggleBtn.addEventListener('click', function () {
+
             if (window.innerWidth <= 992) {
+
                 document.body.classList.toggle('sidebar-open');
-                if (overlay) overlay.classList.toggle('active');
+
+                if (overlay) {
+                    overlay.classList.toggle('active');
+                }
+
             } else {
+
                 document.body.classList.toggle('sidebar-folded');
+
             }
+
         });
     }
 
     if (overlay) {
+
         overlay.addEventListener('click', function () {
+
             document.body.classList.remove('sidebar-open');
+
             overlay.classList.remove('active');
+
         });
     }
+
 });
 </script>
+
+<!-- NOTIFICATIONS AND ANNOUNCEMENTS -->
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -1140,18 +1179,24 @@ document.addEventListener('DOMContentLoaded', function () {
     ).forEach(function (dot) {
 
         const category = dot.dataset.notificationKey;
+
         const version = dot.dataset.notificationVersion;
+
         const storageKey = 'homeAgedRead_' + category;
+
         const dismissedVersion = category + ':' + version;
 
         try {
+
             if (localStorage.getItem(storageKey) === dismissedVersion) {
                 dot.remove();
             }
+
         } catch (error) {
         }
 
         function dismissNotification() {
+
             try {
                 localStorage.setItem(storageKey, dismissedVersion);
             } catch (error) {
@@ -1163,43 +1208,59 @@ document.addEventListener('DOMContentLoaded', function () {
         const widget = dot.closest('.stat-card, .widget');
 
         if (widget) {
+
             widget.addEventListener('click', function (event) {
+
                 if (event.target.closest('.mark-read-button')) {
                     return;
                 }
 
                 dismissNotification();
+
             });
+
         }
+
     });
 
     document.querySelectorAll('.mark-read-button').forEach(function (button) {
 
         const key = 'homeAged_' + button.dataset.announcementKey;
+
         const item = button.closest('.announcement-item');
+
         const readLabel = item.querySelector('.read-label');
 
         function showAsRead() {
+
             button.hidden = true;
+
             readLabel.hidden = false;
+
             item.classList.add('announcement-read');
+
         }
 
         try {
+
             if (localStorage.getItem(key) === 'read') {
                 showAsRead();
             }
+
         } catch (error) {
         }
 
         button.addEventListener('click', function () {
+
             try {
                 localStorage.setItem(key, 'read');
             } catch (error) {
             }
 
             showAsRead();
+
         });
+
     });
 
 });
