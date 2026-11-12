@@ -284,7 +284,11 @@ $residents = $pdo->query(
 
             body .content-root {
                 margin-left: var(--sidebar-w) !important;
-                transition: margin-left 0.15s ease-out;
+                margin-right: 0 !important;
+                width: calc(100% - var(--sidebar-w)) !important;
+                max-width: none !important;
+                flex: 0 0 auto !important;
+                transition: margin-left 0.15s ease-out, width 0.15s ease-out;
             }
         }
 
@@ -293,6 +297,7 @@ $residents = $pdo->query(
 
             body .content-root {
                 margin-left: 0 !important;
+                width: 100% !important;
             }
 
             .app-main {
@@ -333,6 +338,12 @@ $residents = $pdo->query(
             padding: 24px !important;
             box-shadow: none !important;
             overflow-x: hidden;
+        }
+
+        .app-main > .health-heading,
+        .app-main > .health-card {
+            width: 100%;
+            max-width: none;
         }
 
         .health-heading {
@@ -572,8 +583,14 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             if (el === contentRoot) {
-                el.style.setProperty('flex', '1 1 0', 'important');
-                el.style.setProperty('width', 'auto', 'important');
+                /* Fill exactly the space to the right of the sidebar. */
+                /* width / margin-left / flex come from the .content-root CSS
+                   rule so they follow the sidebar's open/folded state. */
+                el.style.removeProperty('width');
+                el.style.removeProperty('flex');
+            } else {
+                /* Inner wrappers must not be narrower than their parent. */
+                el.style.setProperty('width', '100%', 'important');
             }
             innermost = false;
             el = el.parentElement;
@@ -582,6 +599,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.addEventListener('DOMContentLoaded', closeGap);
     window.addEventListener('load', closeGap);
+    window.addEventListener('resize', closeGap);
+    document.addEventListener('click', function (ev) {
+        if (ev.target.closest && ev.target.closest('#sidebarToggle')) {
+            setTimeout(closeGap, 200);
+        }
+    });
 })();
 </script>
 

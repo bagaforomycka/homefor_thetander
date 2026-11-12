@@ -65,7 +65,8 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $action = ($_POST['action'] ?? '') === 'purge' ? 'purge' : 'restore';
-    $type = ($_POST['type'] ?? '') === 'caretaker' ? 'caretaker' : 'resident';
+    $postedType = $_POST['type'] ?? '';
+    $type = in_array($postedType, ['caretaker', 'health'], true) ? $postedType : 'resident';
     $recordId = filter_var($_POST['record_id'] ?? null, FILTER_VALIDATE_INT);
     $postTab = $type === 'caretaker' ? 'caretakers' : 'residents';
 
@@ -73,6 +74,38 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Invalid record selected.';
     } else {
         try {
+
+            /* ---------- HEALTH RECORD (soft-deleted via archived_at) ---------- */
+            if ($type === 'health') {
+
+                if ($action === 'restore') {
+                    $stmt = $pdo->prepare("
+                        UPDATE health_records
+                        SET archived_at = NULL
+                        WHERE id = :id AND archived_at IS NOT NULL
+                    ");
+                    $stmt->execute(['id' => $recordId]);
+
+                    if ($stmt->rowCount() > 0) {
+                        header('Location: archive.php?tab=residents&restored=1&kind=health');
+                        exit;
+                    }
+                    $error = 'Record not found or not archived.';
+                } else {
+                    /* Permanent delete: archived health records only. */
+                    $stmt = $pdo->prepare("
+                        DELETE FROM health_records
+                        WHERE id = :id AND archived_at IS NOT NULL
+                    ");
+                    $stmt->execute(['id' => $recordId]);
+
+                    if ($stmt->rowCount() > 0) {
+                        header('Location: archive.php?tab=residents&deleted=1&kind=health');
+                        exit;
+                    }
+                    $error = 'Only archived health records can be permanently deleted.';
+                }
+            }
 
             /* ---------- RESTORE ---------- */
             if ($action === 'restore' && $type === 'resident') {
@@ -158,7 +191,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         'schedules' => 'resident_id',
                         'caretaker_resident_archive' => 'resident_id'
                     ] as $table => $column) {
-                        $pdo->prepare("DELETE FROM `$table` WHERE `$column` = :id")
+                        $pdo->prepare("DELETE FROM $table WHERE $column = :id")
                             ->execute(['id' => $recordId]);
                     }
 
@@ -263,7 +296,13 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $tab = $postTab;
 }
 
-if (isset($_GET['restored'])) {
+$isHealthMsg = ($_GET['kind'] ?? '') === 'health';
+
+if (isset($_GET['restored']) && $isHealthMsg) {
+    $success = 'Health record restored to the Health Records list.';
+} elseif (isset($_GET['deleted']) && $isHealthMsg) {
+    $success = 'Health record permanently deleted.';
+} elseif (isset($_GET['restored'])) {
     $success = $tab === 'caretakers'
         ? 'Caretaker restored to the Caretakers list and their login re-enabled.'
         : 'Resident restored. Their status is now Active.';
@@ -281,6 +320,15 @@ if (!$error || $_SERVER['REQUEST_METHOD'] === 'POST') {
             ->fetchColumn();
     } catch (Throwable $e) {
         error_log('Admin archive resident count: ' . $e->getMessage());
+    }
+
+    /* Archived health records belong to the Residents tab. */
+    try {
+        $counts['residents'] += (int)$pdo
+            ->query("SELECT COUNT(*) FROM health_records WHERE archived_at IS NOT NULL")
+            ->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('Admin archive health count: ' . $e->getMessage());
     }
 
     try {
@@ -356,6 +404,83 @@ try {
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    if ($tab === 'residents') {
+        $merged = [];
+
+        foreach ($rows as $row) {
+            $merged[] = [
+                'kind' => 'resident',
+                'id' => $row['id'],
+                'resident_code' => $row['resident_id'],
+                'name' => preg_replace('/\s+/', ' ', trim(implode(' ', array_filter([
+                    $row['first_name'] ?? '', $row['middle_name'] ?? '', $row['last_name'] ?? ''
+                ])))),
+                'room_number' => $row['room_number'],
+                'details' => 'Care level: ' . ($row['care_level'] ?: 'Not specified')
+                    . ' | Caretaker: ' . ($row['caretaker_name'] ?: 'Unassigned'),
+                'archived_at' => $row['archived_at']
+            ];
+        }
+
+        /* Archived health records, shown in the same list. */
+        try {
+            $hSql = "
+                SELECT hr.id, hr.record_date, hr.blood_pressure,
+                       hr.medical_conditions, hr.archived_at,
+                       r.resident_id AS resident_code, r.first_name,
+                       r.middle_name, r.last_name, r.room_number
+                FROM health_records hr
+                INNER JOIN residents r ON r.id = hr.resident_id
+                WHERE hr.archived_at IS NOT NULL
+            ";
+            $hParams = [];
+
+            if ($search !== '') {
+                $hSql .= " AND (
+                    r.resident_id LIKE :h1
+                    OR r.first_name LIKE :h2
+                    OR r.middle_name LIKE :h3
+                    OR r.last_name LIKE :h4
+                    OR r.room_number LIKE :h5
+                    OR hr.medical_conditions LIKE :h6
+                )";
+                $hTerm = '%' . $search . '%';
+                foreach (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as $key) {
+                    $hParams[$key] = $hTerm;
+                }
+            }
+
+            $hSql .= " ORDER BY hr.archived_at DESC LIMIT 300";
+            $hStmt = $pdo->prepare($hSql);
+            $hStmt->execute($hParams);
+
+            foreach ($hStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $merged[] = [
+                    'kind' => 'health',
+                    'id' => $row['id'],
+                    'resident_code' => $row['resident_code'],
+                    'name' => preg_replace('/\s+/', ' ', trim(implode(' ', array_filter([
+                        $row['first_name'] ?? '', $row['middle_name'] ?? '', $row['last_name'] ?? ''
+                    ])))),
+                    'room_number' => $row['room_number'],
+                    'details' => 'Check-up: ' . $row['record_date']
+                        . ' | BP: ' . ($row['blood_pressure'] ?: 'Not recorded')
+                        . ' | Conditions: ' . ($row['medical_conditions'] ?: 'None recorded'),
+                    'archived_at' => $row['archived_at']
+                ];
+            }
+        } catch (Throwable $e) {
+            error_log('Admin archive health load error: ' . $e->getMessage());
+        }
+
+        usort($merged, function ($a, $b) {
+            return (strtotime((string)($b['archived_at'] ?? '')) ?: 0)
+                <=> (strtotime((string)($a['archived_at'] ?? '')) ?: 0);
+        });
+
+        $rows = $merged;
+    }
+
 } catch (Throwable $e) {
     error_log('Admin archive load error: ' . $e->getMessage());
     $error = $error ?: 'Unable to load archived records.';
@@ -420,7 +545,7 @@ $isCaretakers = $tab === 'caretakers';
 
     <div class="archive-header d-flex justify-content-between align-items-center flex-wrap gap-3">
         <div>
-            <h1>Archive &amp; Restore</h1>
+            <h1>Archive & Restore</h1>
             <p>
                 Restore archived residents and caretakers, or delete them
                 permanently. Only archived records can be permanently deleted.
@@ -467,8 +592,8 @@ $isCaretakers = $tab === 'caretakers';
                         Caretakers archived from the Caretakers page. Their login stays
                         disabled until you restore them.
                     <?php else: ?>
-                        Residents archived by an administrator. Caretakers' personal
-                        archives are not shown here.
+                        Residents and health records archived by an administrator.
+                        Caretakers' personal archives are not shown here.
                     <?php endif; ?>
                 </p>
             </div>
@@ -484,7 +609,7 @@ $isCaretakers = $tab === 'caretakers';
                     class="form-control"
                     placeholder="<?= $isCaretakers
                         ? 'Search name, employee ID, contact, or position...'
-                        : 'Search name, ID, room, or caretaker...' ?>"
+                        : 'Search name, ID, room, caretaker, or condition...' ?>"
                     value="<?= h($search) ?>"
                 >
             </div>
@@ -500,7 +625,7 @@ $isCaretakers = $tab === 'caretakers';
                 <p class="mb-0">
                     <?= $isCaretakers
                         ? 'Caretakers you archive from the Caretakers page will appear here.'
-                        : 'Residents you archive from the Residents page will appear here.' ?>
+                        : 'Residents and health records you archive will appear here.' ?>
                 </p>
             </div>
 
@@ -521,8 +646,8 @@ $isCaretakers = $tab === 'caretakers';
                                 <th>Resident ID</th>
                                 <th>Resident Name</th>
                                 <th>Room Number</th>
-                                <th>Care Level</th>
-                                <th>Assigned Caretaker</th>
+                                <th>Type</th>
+                                <th>Details</th>
                             <?php endif; ?>
                             <th>Date Archived</th>
                             <th>Action</th>
@@ -534,12 +659,11 @@ $isCaretakers = $tab === 'caretakers';
                             if ($isCaretakers) {
                                 $label = (string)($row['full_name'] ?? 'this caretaker');
                                 $warning = 'Their login is deleted and the residents assigned to them become unassigned.';
+                            } elseif (($row['kind'] ?? '') === 'health') {
+                                $label = 'the health record of ' . ($row['name'] ?? '');
+                                $warning = 'This health record will be removed from the database.';
                             } else {
-                                $label = trim(implode(' ', array_filter([
-                                    $row['first_name'] ?? '',
-                                    $row['middle_name'] ?? '',
-                                    $row['last_name'] ?? ''
-                                ])));
+                                $label = (string)($row['name'] ?? '');
                                 $warning = 'Their health records and schedules are deleted too.';
                             }
                             ?>
@@ -552,16 +676,20 @@ $isCaretakers = $tab === 'caretakers';
                                     <td><?= h($row['shift'] ?: 'N/A') ?></td>
                                     <td><?= h($row['status'] ?: 'Unspecified') ?></td>
                                 <?php else: ?>
-                                    <td><?= h($row['resident_id']) ?></td>
-                                    <td><?= h($label) ?></td>
+                                    <td><?= h($row['resident_code']) ?></td>
+                                    <td><?= h($row['name']) ?></td>
                                     <td><?= h($row['room_number'] ?: 'Not assigned') ?></td>
-                                    <td><?= h($row['care_level'] ?: 'Not specified') ?></td>
-                                    <td><?= h($row['caretaker_name'] ?: 'Unassigned') ?></td>
+                                    <td>
+                                        <span class="badge <?= $row['kind'] === 'health' ? 'text-bg-info' : 'text-bg-success' ?>">
+                                            <?= $row['kind'] === 'health' ? 'Health Record' : 'Resident' ?>
+                                        </span>
+                                    </td>
+                                    <td><?= h($row['details']) ?></td>
                                 <?php endif; ?>
                                 <td>
                                     <?= !empty($row['archived_at'])
                                         ? h(date('M j, Y g:i A', strtotime($row['archived_at'])))
-                                        : '&mdash;' ?>
+                                        : '—' ?>
                                 </td>
                                 <td>
                                     <div class="d-flex gap-2 flex-wrap">
@@ -571,11 +699,13 @@ $isCaretakers = $tab === 'caretakers';
                                             action="archive.php?tab=<?= h($tab) ?>"
                                             onsubmit="return confirm('<?= $isCaretakers
                                                 ? 'Restore this caretaker and re-enable their login?'
-                                                : 'Restore this resident? Their status will be set to Active.' ?>');"
+                                                : (($row['kind'] ?? '') === 'health'
+                                                    ? 'Restore this health record?'
+                                                    : 'Restore this resident? Their status will be set to Active.') ?>');"
                                         >
                                             <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
                                             <input type="hidden" name="action" value="restore">
-                                            <input type="hidden" name="type" value="<?= $isCaretakers ? 'caretaker' : 'resident' ?>">
+                                            <input type="hidden" name="type" value="<?= $isCaretakers ? 'caretaker' : h($row['kind']) ?>">
                                             <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
                                             <button type="submit" class="btn btn-restore btn-sm">Restore</button>
                                         </form>
@@ -587,7 +717,7 @@ $isCaretakers = $tab === 'caretakers';
                                         >
                                             <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
                                             <input type="hidden" name="action" value="purge">
-                                            <input type="hidden" name="type" value="<?= $isCaretakers ? 'caretaker' : 'resident' ?>">
+                                            <input type="hidden" name="type" value="<?= $isCaretakers ? 'caretaker' : h($row['kind']) ?>">
                                             <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
                                             <button type="submit" class="btn btn-outline-danger btn-sm">
                                                 Delete permanently

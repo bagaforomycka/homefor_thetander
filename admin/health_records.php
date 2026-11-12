@@ -54,7 +54,9 @@ if (
     );
  
     if (!$recordId || $recordId < 1) {
-        $error = 'Invalid health record selected.';
+        $error = 'Invalid health record selected. (Received ID: '
+            . h($_POST['record_id'] ?? 'none')
+            . '. If this is 0, the health_records.id column is not AUTO_INCREMENT.)';
     } else {
         try {
             $stmt = $pdo->prepare("
@@ -150,7 +152,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Health Records - Home for the Aged[cite: 1]</title>
+    <title>Health Records - Home for the Aged</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         * { box-sizing: border-box; }
