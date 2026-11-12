@@ -113,7 +113,7 @@ try {
             --green: #17683a;
             --light-green: #33b960;
             --pale-green: #edf7ef;
-            --text: #304b3b;
+            --text: #0c2717;
         }
 
         * {
@@ -412,25 +412,25 @@ try {
                                 </span>
                             </td>
                             <td>
-                                <div class="d-flex gap-1 flex-wrap">
-                                    <a
+                                 <div class="d-flex gap-1 flex-wrap">
+                                     <a
                                         href="view_profile_cs.php?id=<?= (int)$row['id'] ?>"
-                                        class="btn btn-sm btn-outline-info"
+                                        class="btn btn-sm btn-outline-success"
                                     >View</a>
 
-                                    <a
+                                     <a
                                         href="edit_profile_cs.php?id=<?= (int)$row['id'] ?>"
-                                        class="btn btn-sm btn-outline-primary"
+                                        class="btn btn-sm btn-outline-warning"
                                     >Edit</a>
 
                                     <form method="POST" class="d-inline"
-                                          onsubmit="return confirm('Archive this caretaker? You can restore them later from Archive & Restore.');">
-                                        <input type="hidden" name="csrf_token" value="<?= e($_SESSION['caretakers_csrf']) ?>">
-                                        <input type="hidden" name="action" value="archive">
-                                        <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            Archive
-                                        </button>
+                                        onsubmit="return confirm('Archive this caretaker? You can restore them later from Archive & Restore.');">
+                                       <input type="hidden" name="csrf_token" value="<?= e($_SESSION['caretakers_csrf']) ?>">
+                                       <input type="hidden" name="action" value="archive">
+                                       <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                       <button type="submit" class="btn btn-sm btn-outline-danger">
+                                           Archive
+                                       </button>
                                     </form>
                                 </div>
                             </td>

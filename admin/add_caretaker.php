@@ -372,10 +372,12 @@ $selectedStatus = $_POST['status'] ?? 'Active';
             font-size: 14px;
         }
 
-        .form-card {
+       .form-card {
             width: 100%;
             max-width: none;
             margin: 0 0 20px;
+            padding: 28px 32px; 
+            box-sizing: border-box; 
             background: #fff;
             border: 1px solid #e3eee6;
             border-radius: 12px;

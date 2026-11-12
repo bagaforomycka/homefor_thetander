@@ -3,189 +3,183 @@
 session_start();
 
 require_once __DIR__ . '/../config/db.php';
-require_once __DIR__ . '/../config/archive_helper.php';
 
 if (
-    !isset($_SESSION['user_id'], $_SESSION['role']) ||
-    $_SESSION['role'] !== 'caretaker'
+    !isset($_SESSION['user_id']) ||
+    !in_array(strtolower($_SESSION['role'] ?? ''), ['admin', 'staff'], true)
 ) {
     header('Location: ../index.php');
     exit;
 }
 
-function h($value): string {
+function h($value) {
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-function countRecords(PDO $pdo, string $sql, array $params = []): int {
+function dashboardCount($pdo, $sql) {
     try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        return (int)$stmt->fetchColumn();
-    } catch (Throwable $e) {
-        error_log('Caretaker dashboard count: ' . $e->getMessage());
+        return (int) $pdo->query($sql)->fetchColumn();
+    } catch (PDOException $e) {
+        error_log('Dashboard count error: ' . $e->getMessage());
         return 0;
     }
 }
 
-function latestRecord(PDO $pdo, string $sql): string {
+function latestRecordVersion($pdo, $sql) {
     try {
         $value = $pdo->query($sql)->fetchColumn();
-        return $value ? (string)$value : '';
-    } catch (Throwable $e) {
+        return $value ? (string) $value : '';
+    } catch (PDOException $e) {
+        error_log('Dashboard notification error: ' . $e->getMessage());
         return '';
     }
 }
 
-/* Verify caretaker account. */
-$userId = (int)$_SESSION['user_id'];
-$fullName = $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Caretaker';
-
-try {
-    $stmt = $pdo->prepare(
-        "SELECT full_name, status
-         FROM users
-         WHERE id = ? AND role = 'caretaker'
-         LIMIT 1"
-    );
-    $stmt->execute([$userId]);
-    $account = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (
-        !$account ||
-        strtolower((string)$account['status']) !== 'active'
-    ) {
-        $_SESSION = [];
-        session_destroy();
-        header('Location: ../index.php?error=account_inactive');
-        exit;
+function notificationDot($version, $key) {
+    if ($version === '') {
+        return '';
     }
 
-    $fullName = $account['full_name'] ?: $fullName;
-
-} catch (Throwable $e) {
-    error_log('Caretaker dashboard account: ' . $e->getMessage());
-    http_response_code(500);
-    exit('Unable to verify caretaker account. Check your database connection.');
+    return '<button type="button"
+        class="notification-dot"
+        data-notification-key="' . h($key) . '"
+        data-notification-version="' . h($version) . '"
+        aria-label="Dismiss notification"
+        title="Dismiss notification"></button>';
 }
 
-/* Summary counts. */
-$totalResidents = 0;
+/* DASHBOARD COUNTS */
 
-try {
-    $residentColumns = $pdo->query("SHOW COLUMNS FROM residents")
-        ->fetchAll(PDO::FETCH_COLUMN);
-
-    if (in_array('assigned_caretaker', $residentColumns, true)) {
-        archiveEnsureCaretakerTable($pdo);
-        $residentVisible = archiveResidentVisibleSql($pdo, '');
-
-        $totalResidents = countRecords(
-            $pdo,
-            "SELECT COUNT(*)
-             FROM residents
-             WHERE (
-                 assigned_caretaker = ?
-                 OR assigned_caretaker = ?
-             )
-             AND (
-                 status IS NULL
-                 OR LOWER(status) NOT IN ('archived', 'deleted')
-             )
-             AND $residentVisible
-             AND NOT EXISTS (
-                 SELECT 1 FROM caretaker_resident_archive ca
-                 WHERE ca.resident_id = residents.id
-                   AND ca.caretaker_user_id = ?
-             )",
-            [$userId, $fullName, $userId]
-        );
-    }
-} catch (Throwable $e) {
-    error_log('Caretaker residents: ' . $e->getMessage());
-}
-
-/* Count tasks from the same table used by the admin dashboard. */
-$todayTasks = countRecords(
+$totalResidents = dashboardCount(
     $pdo,
-    "SELECT COUNT(*)
-     FROM scheduled_tasks
-     WHERE DATE(scheduled_date) = CURDATE()"
+    "SELECT COUNT(*) FROM residents"
 );
 
-$completedTasks = countRecords(
+$totalHealthRecords = dashboardCount(
     $pdo,
-    "SELECT COUNT(*)
-     FROM scheduled_tasks
-     WHERE DATE(scheduled_date) = CURDATE()
-       AND LOWER(status) = 'completed'"
+    "SELECT COUNT(*) FROM health_records"
 );
 
-$pendingTasks = countRecords(
+/* CARETAKERS ARE STORED IN THE CARETAKERS TABLE */
+$totalCaretakers = dashboardCount(
     $pdo,
-    "SELECT COUNT(*)
-     FROM scheduled_tasks
-     WHERE DATE(scheduled_date) = CURDATE()
-       AND LOWER(status) <> 'completed'"
+    "SELECT COUNT(*) FROM caretakers
+     WHERE archived_at IS NULL"
 );
 
-/* Load announcements published by the admin. */
-try {
-    $stmt = $pdo->query(
-        "SELECT title, message, created_at
-         FROM announcements
-         WHERE status = 'Published'
-         ORDER BY created_at DESC
-         LIMIT 5"
-    );
-    $announcements = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
-    error_log('Caretaker announcements: ' . $e->getMessage());
-    $announcements = [];
-}
-
-/* Load upcoming/latest schedules. */
-try {
-    $stmt = $pdo->query(
-        "SELECT task_name, scheduled_date, status
-         FROM scheduled_tasks
-         ORDER BY scheduled_date DESC
-         LIMIT 5"
-    );
-    $schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
-    error_log('Caretaker schedules: ' . $e->getMessage());
-    $schedules = [];
-}
-
-$newAnnouncements = latestRecord(
+$availableRooms = dashboardCount(
     $pdo,
-    "SELECT MAX(created_at)
-     FROM announcements
-     WHERE status = 'Published'
-       AND created_at >= NOW() - INTERVAL 1 DAY"
+    "SELECT COUNT(*) FROM rooms
+     WHERE status = 'Available'"
 );
 
-$newSchedules = latestRecord(
+/* NEW RECORD NOTIFICATIONS */
+
+$newResidents = latestRecordVersion(
     $pdo,
-    "SELECT MAX(created_at)
-     FROM scheduled_tasks
+    "SELECT MAX(created_at) FROM residents
      WHERE created_at >= NOW() - INTERVAL 1 DAY"
 );
 
-$hour = (int)date('G');
-$greeting = $hour < 12
-    ? 'Good Morning'
-    : ($hour < 18 ? 'Good Afternoon' : 'Good Evening');
+$newHealthRecords = latestRecordVersion(
+    $pdo,
+    "SELECT MAX(created_at) FROM health_records
+     WHERE created_at >= NOW() - INTERVAL 1 DAY"
+);
+
+$newRooms = latestRecordVersion(
+    $pdo,
+    "SELECT MAX(created_at) FROM rooms
+     WHERE created_at >= NOW() - INTERVAL 1 DAY"
+);
+
+$newCaretakers = latestRecordVersion(
+    $pdo,
+    "SELECT MAX(created_at) FROM caretakers
+     WHERE archived_at IS NULL
+     AND created_at >= NOW() - INTERVAL 1 DAY"
+);
+
+$newAnnouncements = latestRecordVersion(
+    $pdo,
+    "SELECT MAX(created_at) FROM announcements
+     WHERE status = 'Published'
+     AND created_at >= NOW() - INTERVAL 1 DAY"
+);
+
+$newSchedules = latestRecordVersion(
+    $pdo,
+    "SELECT MAX(created_at) FROM schedules
+     WHERE archived_at IS NULL
+     AND created_at >= NOW() - INTERVAL 1 DAY"
+);
+
+/* ANNOUNCEMENTS */
+
+try {
+    $announcementStmt = $pdo->query(
+        "SELECT title, created_at
+         FROM announcements
+         WHERE status = 'Published'
+         ORDER BY created_at DESC
+         LIMIT 3"
+    );
+
+    $dashboardAnnouncements = $announcementStmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (PDOException $e) {
+    error_log('Dashboard announcements error: ' . $e->getMessage());
+    $dashboardAnnouncements = [];
+}
+
+/* SCHEDULES */
+
+$isAdmin = strtolower($_SESSION['role'] ?? '') === 'admin';
+
+if (empty($_SESSION['schedules_csrf_token'])) {
+    $_SESSION['schedules_csrf_token'] = bin2hex(random_bytes(32));
+}
+
+$scheduleCsrf = $_SESSION['schedules_csrf_token'];
+
+try {
+    $scheduleStmt = $pdo->query(
+        "SELECT s.id, s.title, s.schedule_type, s.schedule_date,
+                s.start_time, s.status,
+                r.first_name, r.last_name
+         FROM schedules s
+         LEFT JOIN residents r ON r.id = s.resident_id
+         WHERE s.archived_at IS NULL
+         AND s.status = 'Scheduled'
+         ORDER BY s.schedule_date ASC, s.start_time ASC, s.id ASC
+         LIMIT 5"
+    );
+
+    $dashboardSchedules = $scheduleStmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (PDOException $e) {
+    error_log('Dashboard schedules error: ' . $e->getMessage());
+    $dashboardSchedules = [];
+}
+
+$scheduleNotice = [
+    'done' => ['success', 'Schedule marked as done.'],
+    'archived' => ['success', 'Schedule deleted. You can restore it from Archive & Restore.'],
+    'notfound' => ['warning', 'That schedule was not found or was already updated.'],
+    'invalid' => ['warning', 'Please select a valid schedule.'],
+][$_GET['schedule'] ?? ''] ?? null;
+
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>Caretaker Dashboard - Home for the Aged</title>
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Dashboard - Home for the Aged</title>
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
@@ -193,6 +187,7 @@ $greeting = $hour < 12
     >
 
     <style>
+
         * {
             box-sizing: border-box;
         }
@@ -201,66 +196,203 @@ $greeting = $hour < 12
             margin: 0;
             background: #eef1ee;
             font-family: Arial, sans-serif;
-            color: #303830;
+            color: #333;
+            display: flex;
+            min-height: 100vh;
         }
 
         .main-content {
             width: 100%;
             max-width: 100%;
             min-width: 0;
-            padding: 28px;
+            padding: 20px;
+            flex-grow: 1;
+            transition: margin-left 0.3s ease;
         }
 
+        /* SIDEBAR */
+
+        .sidebar-toggle-btn {
+            background: rgba(255,255,255,.15);
+            border: 1px solid rgba(255,255,255,.3);
+            border-radius: 6px;
+            padding: 6px;
+            cursor: pointer;
+            display: inline-flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            width: 36px;
+            height: 36px;
+            margin: 12px 0;
+        }
+
+        .sidebar-toggle-btn:hover {
+            background: rgba(255,255,255,.25);
+        }
+
+        .sidebar-toggle-btn .hamburger-line {
+            display: block;
+            width: 18px;
+            height: 2px;
+            background: white;
+            border-radius: 2px;
+        }
+
+        .sidebar-toggle-wrapper {
+            padding-left: 15px;
+            width: 100%;
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,.4);
+            z-index: 998;
+            display: none;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        .sidebar,
+        #sidebar,
+        .sidebar-container,
+        aside {
+            width: 260px;
+            min-width: 260px;
+            transition: width .3s ease, transform .3s ease;
+            z-index: 999;
+            flex-shrink: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (min-width: 993px) {
+
+            body.sidebar-folded .sidebar,
+            body.sidebar-folded #sidebar,
+            body.sidebar-folded .sidebar-container,
+            body.sidebar-folded aside {
+                width: 70px;
+                min-width: 70px;
+            }
+
+            body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
+            body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper) {
+                display: none !important;
+            }
+
+            body.sidebar-folded .sidebar-toggle-wrapper {
+                display: flex !important;
+                justify-content: center !important;
+                padding-left: 0 !important;
+                width: 100% !important;
+                margin-top: 12px !important;
+            }
+        }
+
+        @media (max-width: 992px) {
+
+            .sidebar,
+            #sidebar,
+            .sidebar-container,
+            aside {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                transform: translateX(-100%);
+                width: 260px !important;
+            }
+
+            body.sidebar-open .sidebar,
+            body.sidebar-open #sidebar,
+            body.sidebar-open .sidebar-container,
+            body.sidebar-open aside {
+                transform: translateX(0);
+            }
+        }
+
+        .sidebar-logo {
+            display: block;
+            padding: 10px 4px 6px;
+            text-align: center;
+        }
+
+        .sidebar-logo a {
+            display: block;
+        }
+
+        .sidebar-logo img {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            margin: 0 auto;
+            transform: scale(1.1);
+        }
+
+        /* PAGE HEADER */
+
         .page-header {
-            margin-bottom: 22px;
+            margin-bottom: 20px;
         }
 
         .page-header h2 {
-            color: #174d2b;
+            color: #17683a;
             font-size: 25px;
             font-weight: 700;
             margin-bottom: 5px;
         }
 
         .page-header p {
-            color: #626b63;
+            color: #174d2b;
             font-size: 13px;
             margin: 0;
         }
 
-        .welcome-panel {
-            background: #fff;
-            border: 2px solid #aab8ac;
-            border-radius: 10px;
-            padding: 22px;
-            margin-bottom: 20px;
-        }
-
-        .welcome-panel h3 {
-            color: #174d2b;
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-
-        .welcome-panel p {
-            color: #626b63;
-            margin: 0;
-        }
+        /* STAT CARDS */
 
         .stat-card {
             position: relative;
             height: 100%;
             min-height: 112px;
             padding: 17px;
-            background: #fff;
+            background: white;
             border: 2px solid #aab8ac;
             border-radius: 10px;
-            transition: border-color .2s ease;
+            transition: border-color .2s ease, background .2s ease;
         }
 
         .stat-card:hover {
+            background: #f7faf7;
             border-color: #174d2b;
+        }
+
+        .stat-card h6 {
+            color: #454d46;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 0 0 12px;
+            padding-right: 10px;
+        }
+
+        .stat-card h3 {
+            color: #174d2b;
+            font-size: 25px;
+            font-weight: 700;
+            margin: 0;
+            line-height: 1.2;
         }
 
         .stat-link {
@@ -270,37 +402,39 @@ $greeting = $hour < 12
             text-decoration: none;
         }
 
-        .stat-card h6 {
-            color: #454d46;
-            font-size: 12px;
-            font-weight: 600;
-            margin: 0 0 12px;
+        .notification-dot {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: block;
+            width: 10px;
+            height: 10px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: #e53935;
+            cursor: pointer;
+            z-index: 2;
         }
 
-        .stat-card h3 {
-            color: #174d2b;
-            font-size: 29px;
-            font-weight: 700;
-            margin: 0;
+        .notification-dot:hover {
+            background: #b71c1c;
         }
 
-        .stat-symbol {
-            float: right;
-            color: #23733e;
-            font-size: 26px;
+        .widget-header .notification-dot {
+            position: static;
+            flex: 0 0 9px;
+            width: 9px;
+            height: 9px;
+            margin-left: 6px;
         }
 
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 18px;
-            margin-top: 20px;
-        }
+        /* WIDGETS */
 
         .widget {
             min-width: 0;
             padding: 18px;
-            background: #fff;
+            background: white;
             border: 2px solid #aab8ac;
             border-radius: 10px;
             transition: border-color .2s ease;
@@ -321,7 +455,6 @@ $greeting = $hour < 12
         .widget-header h5 {
             display: flex;
             align-items: center;
-            gap: 7px;
             color: #174d2b;
             font-size: 15px;
             font-weight: 700;
@@ -340,139 +473,222 @@ $greeting = $hour < 12
             text-decoration: underline;
         }
 
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+            margin-top: 20px;
+        }
+
+        /* ANNOUNCEMENTS AND SCHEDULES */
+
         .announcement-item,
         .schedule-item {
             display: flex;
-            align-items: flex-start;
+            flex-wrap: wrap;
+            align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            padding: 12px 0;
+            gap: 10px;
+            padding: 11px 0;
             border-bottom: 1px solid #dce2dc;
+        }
+
+        .announcement-item:first-child,
+        .schedule-item:first-child {
+            padding-top: 3px;
         }
 
         .announcement-item:last-child,
         .schedule-item:last-child {
             border-bottom: none;
+            padding-bottom: 2px;
         }
 
-        .announcement-content,
-        .schedule-content {
-            min-width: 0;
+        .announcement-content {
+            flex: 1;
+            min-width: 130px;
+        }
+
+        .announcement-item strong,
+        .schedule-item strong {
+            display: block;
+            color: #303830;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
             overflow-wrap: anywhere;
         }
 
-        .announcement-content strong,
-        .schedule-content strong {
-            display: block;
-            color: #303830;
-            font-size: 14px;
-            margin-bottom: 5px;
-        }
-
-        .announcement-content p {
-            font-size: 13px;
-            color: #515b52;
-            white-space: pre-wrap;
-            margin: 0 0 5px;
-        }
-
-        .announcement-content small,
-        .schedule-content small {
-            display: block;
-            color: #788078;
+        .announcement-item small,
+        .schedule-item small {
+            color: #626b63;
             font-size: 11px;
-            margin-top: 3px;
         }
 
-        .notification-dot {
-            flex: 0 0 9px;
-            width: 9px;
-            height: 9px;
-            border: 0;
-            border-radius: 50%;
-            background: #e53935;
+        .schedule-info {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        .schedule-item-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .schedule-item-actions form {
+            margin: 0;
+        }
+
+        .schedule-btn {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
             cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .schedule-btn-done {
+            background: #17683a;
+            color: white;
+            border: 1px solid #17683a;
+        }
+
+        .schedule-btn-done:hover {
+            background: #0f4f2a;
+        }
+
+        .schedule-btn-delete {
+            background: white;
+            color: #b02a37;
+            border: 1px solid #e0a4aa;
+        }
+
+        .schedule-btn-delete:hover {
+            background: #b02a37;
+            color: white;
         }
 
         .mark-read-button {
-            flex-shrink: 0;
-            padding: 5px 9px;
-            background: #edf8ef;
+            padding: 6px 10px;
+            background: white;
             color: #174d2b;
-            border: 1px solid #b7cbb9;
-            border-radius: 5px;
+            border: 1px solid #aab8ac;
+            border-radius: 6px;
             font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
         }
 
         .mark-read-button:hover {
-            background: #dcefe0;
+            background: #174d2b;
+            color: white;
         }
 
         .read-label {
-            flex-shrink: 0;
-            color: #23733e;
+            color: #626b63;
             font-size: 11px;
-        }
-
-        .announcement-read .announcement-content {
-            opacity: .65;
+            font-weight: 600;
         }
 
         .empty-message {
-            color: #788078;
+            color: #626b63;
             font-size: 13px;
             margin: 0;
-            padding: 12px 0;
+            padding: 8px 0;
         }
 
+        /* ADMISSION TRACKER */
+
+        .graph-widget {
+            margin-top: 20px;
+        }
+
+        .graph-widget p {
+            color: #626b63;
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 7px 0 14px;
+        }
+
+        .graph-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+            padding: 9px 14px;
+            background: #174d2b;
+            color: white;
+            border: 1px solid #174d2b;
+            border-radius: 7px;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .graph-link:hover {
+            background: #103b20;
+            color: white;
+        }
+
+        /* QUICK ACTIONS */
+
         .quick-actions-section {
-            margin-top: 22px;
+            margin-top: 24px;
         }
 
         .quick-actions-title {
             color: #174d2b;
-            font-size: 17px;
+            font-size: 16px;
             font-weight: 700;
-            margin-bottom: 13px;
+            margin: 0 0 14px;
         }
 
         .quick-actions {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
+            gap: 12px;
         }
 
         .quick-action {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 11px;
             min-width: 0;
-            padding: 15px;
-            background: #fff;
-            color: #303830;
+            min-height: 64px;
+            padding: 12px;
+            background: white;
+            color: #174d2b;
+            border: 2px solid #c0cbc1;
+            border-radius: 9px;
             text-decoration: none;
-            border: 2px solid #aab8ac;
-            border-radius: 10px;
             transition: border-color .2s ease, background .2s ease;
         }
 
         .quick-action:hover {
+            background: #f5f8f5;
+            color: #103b20;
             border-color: #174d2b;
-            background: #f7faf7;
-            color: #174d2b;
+        }
+
+        .quick-action:focus-visible,
+        .graph-link:focus-visible,
+        .mark-read-button:focus-visible {
+            outline: 2px solid #174d2b;
+            outline-offset: 3px;
         }
 
         .quick-action-icon {
-            display: grid;
-            place-items: center;
-            flex: 0 0 38px;
-            width: 38px;
-            height: 38px;
-            background: #edf8ef;
-            color: #174d2b;
-            border-radius: 8px;
-            font-size: 21px;
-            font-weight: 700;
+            display: flex;
+            flex: 0 0 34px;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            background: #174d2b;
+            border-radius: 7px;
+            color: white;
+            font-size: 19px;
         }
 
         .quick-action-text {
@@ -481,149 +697,200 @@ $greeting = $hour < 12
 
         .quick-action-text strong {
             display: block;
-            font-size: 13px;
-            overflow-wrap: anywhere;
+            color: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.4;
         }
 
         .quick-action-text small {
             display: block;
-            color: #788078;
-            font-size: 11px;
-            margin-top: 4px;
+            margin-top: 3px;
+            color: #626b63;
+            font-size: 10px;
+            line-height: 1.3;
         }
 
-        @media (max-width: 1200px) {
+        /* RESPONSIVE */
+
+        @media (max-width: 1100px) {
             .quick-actions {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
 
-        @media (max-width: 991.98px) {
-            .main-content {
-                padding: 20px;
+        @media (max-width: 992px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
             }
         }
 
-        @media (max-width: 700px) {
-            .main-content {
-                padding: 15px 12px;
+        @media (max-width: 576px) {
+
+            .page-header h2 {
+                font-size: 22px;
             }
 
-            .dashboard-grid {
-                grid-template-columns: 1fr;
+            .stat-card {
+                min-height: 102px;
+                padding: 14px;
+            }
+
+            .stat-card h3 {
+                font-size: 23px;
+            }
+
+            .widget {
+                padding: 14px;
             }
 
             .quick-actions {
                 grid-template-columns: 1fr;
             }
 
-            .welcome-panel {
-                padding: 17px;
-            }
-
-            .welcome-panel h3 {
-                font-size: 21px;
+            .quick-action {
+                min-height: 58px;
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                transition: none !important;
+            }
+        }
+
     </style>
+
 </head>
 
 <body>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
 <div class="main-content">
 
+    <!-- PAGE HEADER -->
+
     <div class="page-header">
-        <h2>Caretaker Dashboard</h2>
-        <p>Welcome to your Home for the Aged care workspace.</p>
+        <h2>Dashboard</h2>
+        <p>Overview of the Home for the Aged Management System</p>
     </div>
 
-    <section class="welcome-panel">
-        <h3><?= h($greeting) ?>, <?= h($fullName) ?>!</h3>
-        <p>
-            Thank you for providing compassionate care.
-            Review your residents, daily tasks, schedules, and the latest
-            announcements from the administrator.
-        </p>
-    </section>
-
-    <!-- CARE SUMMARY -->
+    <!-- DASHBOARD STATISTICS -->
 
     <div class="row g-3">
 
-        <div class="col-6 col-xl-3">
+        <!-- TOTAL RESIDENTS -->
+
+        <div class="col-6 col-xl">
             <div class="stat-card">
-                <span class="stat-symbol" aria-hidden="true">&#9823;</span>
-                <a href="my_residents.php" class="stat-link">
-                    <h6>My Residents</h6>
-                    <h3><?= number_format($totalResidents) ?></h3>
+
+                <?= notificationDot($newResidents, 'residents') ?>
+
+                <a href="residents.php" class="stat-link">
+                    <h6>Total Residents</h6>
+                    <h3><?= $totalResidents ?></h3>
                 </a>
+
             </div>
         </div>
 
-        <div class="col-6 col-xl-3">
+        <!-- HEALTH RECORDS -->
+
+        <div class="col-6 col-xl">
             <div class="stat-card">
-                <span class="stat-symbol" aria-hidden="true">&#9638;</span>
-                <a href="care_tasks.php" class="stat-link">
-                    <h6>Today's Tasks</h6>
-                    <h3><?= number_format($todayTasks) ?></h3>
+
+                <?= notificationDot($newHealthRecords, 'health_records') ?>
+
+                <a href="health_records.php" class="stat-link">
+                    <h6>Health Records</h6>
+                    <h3><?= $totalHealthRecords ?></h3>
                 </a>
+
             </div>
         </div>
 
-        <div class="col-6 col-xl-3">
+        <!-- TOTAL CARETAKERS -->
+
+        <div class="col-6 col-xl">
             <div class="stat-card">
-                <span class="stat-symbol" aria-hidden="true">&#10003;</span>
-                <a href="care_tasks.php" class="stat-link">
-                    <h6>Completed Today</h6>
-                    <h3><?= number_format($completedTasks) ?></h3>
+
+                <?= notificationDot($newCaretakers, 'caretakers') ?>
+
+                <a href="caretakers_staff.php" class="stat-link">
+                    <h6>Total Caretakers</h6>
+                    <h3><?= $totalCaretakers ?></h3>
                 </a>
+
             </div>
         </div>
 
-        <div class="col-6 col-xl-3">
+        <!-- AVAILABLE ROOMS -->
+
+        <div class="col-6 col-xl">
             <div class="stat-card">
-                <span class="stat-symbol" aria-hidden="true">&#9711;</span>
-                <a href="care_tasks.php" class="stat-link">
-                    <h6>Pending Today</h6>
-                    <h3><?= number_format($pendingTasks) ?></h3>
+
+                <?= notificationDot($newRooms, 'rooms') ?>
+
+                <a href="rooms.php" class="stat-link">
+                    <h6>Available Rooms</h6>
+                    <h3><?= $availableRooms ?></h3>
                 </a>
+
             </div>
         </div>
 
     </div>
+
+    <!-- ADMISSION TRACKER -->
+
+    <section class="widget graph-widget">
+
+        <div class="widget-header">
+            <h5>Patient Admission Trends</h5>
+            <a href="admission_tracker.php">View Graph →</a>
+        </div>
+
+        <p>
+            Track resident admissions with weekly, monthly, and yearly statistics.
+        </p>
+
+        <a href="admission_tracker.php" class="graph-link">
+            Open Admission Tracker
+        </a>
+
+    </section>
 
     <!-- ANNOUNCEMENTS AND SCHEDULES -->
 
     <div class="dashboard-grid">
 
+        <!-- ANNOUNCEMENTS -->
+
         <section class="widget">
 
             <div class="widget-header">
+
                 <h5>
                     Announcements
-                    <?php if ($newAnnouncements !== ''): ?>
-                        <button
-                            type="button"
-                            class="notification-dot"
-                            data-notification-key="announcements"
-                            data-notification-version="<?= h($newAnnouncements) ?>"
-                            aria-label="Dismiss announcement notification"
-                        ></button>
-                    <?php endif; ?>
+                    <?= notificationDot($newAnnouncements, 'announcements') ?>
                 </h5>
 
-                <a href="announcements.php">View All &rarr;</a>
+                <a href="announcements.php">View All →</a>
+
             </div>
 
-            <?php if (!empty($announcements)): ?>
+            <?php if (!empty($dashboardAnnouncements)): ?>
 
-                <?php foreach ($announcements as $announcement): ?>
+                <?php foreach ($dashboardAnnouncements as $announcement): ?>
 
                     <?php
                     $announcementKey = 'announcement_' . md5(
-                        ($announcement['title'] ?? '') . '|' .
+                        $announcement['title'] . '|' .
                         ($announcement['created_at'] ?? '')
                     );
                     ?>
@@ -632,20 +899,19 @@ $greeting = $hour < 12
                         class="announcement-item"
                         data-announcement-key="<?= h($announcementKey) ?>"
                     >
-                        <div class="announcement-content">
-                            <strong><?= h($announcement['title']) ?></strong>
 
-                            <p><?= h($announcement['message'] ?? '') ?></p>
+                        <div class="announcement-content">
+
+                            <strong>
+                                <?= h($announcement['title']) ?>
+                            </strong>
 
                             <small>
-                                Published:
                                 <?= !empty($announcement['created_at'])
-                                    ? h(date(
-                                        'M d, Y g:i A',
-                                        strtotime($announcement['created_at'])
-                                    ))
+                                    ? date('M d, Y', strtotime($announcement['created_at']))
                                     : '' ?>
                             </small>
+
                         </div>
 
                         <button
@@ -657,6 +923,7 @@ $greeting = $hour < 12
                         </button>
 
                         <span class="read-label" hidden>Read</span>
+
                     </div>
 
                 <?php endforeach; ?>
@@ -671,51 +938,139 @@ $greeting = $hour < 12
 
         </section>
 
+        <!-- SCHEDULED TASKS -->
+
         <section class="widget">
 
             <div class="widget-header">
+
                 <h5>
                     Scheduled Tasks
-                    <?php if ($newSchedules !== ''): ?>
-                        <button
-                            type="button"
-                            class="notification-dot"
-                            data-notification-key="schedules"
-                            data-notification-version="<?= h($newSchedules) ?>"
-                            aria-label="Dismiss schedule notification"
-                        ></button>
-                    <?php endif; ?>
+                    <?= notificationDot($newSchedules, 'schedules') ?>
                 </h5>
 
-                <a href="my_schedule.php">View All &rarr;</a>
+                <a href="schedules.php">View All →</a>
+
             </div>
 
-            <?php if (!empty($schedules)): ?>
+            <?php if ($scheduleNotice): ?>
 
-                <?php foreach ($schedules as $schedule): ?>
+                <div class="alert alert-<?= h($scheduleNotice[0]) ?> py-2 px-3 mb-2"
+                     style="font-size:12px;">
+
+                    <?= h($scheduleNotice[1]) ?>
+
+                </div>
+
+            <?php endif; ?>
+
+            <?php if (!empty($dashboardSchedules)): ?>
+
+                <?php foreach ($dashboardSchedules as $schedule): ?>
+
+                    <?php
+
+                    $dashResident = trim(
+                        ($schedule['first_name'] ?? '') . ' ' .
+                        ($schedule['last_name'] ?? '')
+                    );
+
+                    $dashTime = !empty($schedule['start_time'])
+                        ? date('g:i A', strtotime($schedule['start_time']))
+                        : '';
+
+                    ?>
 
                     <div class="schedule-item">
-                        <div class="schedule-content">
+
+                        <div class="schedule-info">
 
                             <strong>
-                                <?= h($schedule['task_name'] ?? 'Scheduled Task') ?>
+                                <?= h($schedule['title']) ?>
                             </strong>
 
                             <small>
-                                Date:
-                                <?= !empty($schedule['scheduled_date'])
-                                    ? h(date(
-                                        'M d, Y',
-                                        strtotime($schedule['scheduled_date'])
-                                    ))
-                                    : 'Not set' ?>
-                            </small>
 
-                            <small>
-                                Status: <?= h($schedule['status'] ?? 'Pending') ?>
+                                <?= !empty($schedule['schedule_date'])
+                                    ? h(date('M d, Y', strtotime($schedule['schedule_date'])))
+                                    : 'No date' ?>
+
+                                <?= $dashTime !== '' ? ' · ' . h($dashTime) : '' ?>
+
+                                <?= $dashResident !== '' ? ' · ' . h($dashResident) : '' ?>
+
+                                · <?= h($schedule['schedule_type'] ?? '') ?>
+
                             </small>
 
                         </div>
+
+                        <div class="schedule-item-actions">
+
+                            <form method="POST" action="schedules.php">
+
+                                <input type="hidden" name="action" value="complete">
+
+                                <input type="hidden" name="return" value="dashboard">
+
+                                <input
+                                    type="hidden"
+                                    name="schedule_id"
+                                    value="<?= (int) $schedule['id'] ?>"
+                                >
+
+                                <input
+                                    type="hidden"
+                                    name="csrf_token"
+                                    value="<?= h($scheduleCsrf) ?>"
+                                >
+
+                                <button
+                                    type="submit"
+                                    class="schedule-btn schedule-btn-done"
+                                >
+                                    Mark as Done
+                                </button>
+
+                            </form>
+
+                            <?php if ($isAdmin): ?>
+
+                                <form
+                                    method="POST"
+                                    action="schedules.php"
+                                    onsubmit="return confirm('Delete this schedule? It will be moved to Archive & Restore and can be restored later.');"
+                                >
+
+                                    <input type="hidden" name="action" value="delete">
+
+                                    <input type="hidden" name="return" value="dashboard">
+
+                                    <input
+                                        type="hidden"
+                                        name="schedule_id"
+                                        value="<?= (int) $schedule['id'] ?>"
+                                    >
+
+                                    <input
+                                        type="hidden"
+                                        name="csrf_token"
+                                        value="<?= h($scheduleCsrf) ?>"
+                                    >
+
+                                    <button
+                                        type="submit"
+                                        class="schedule-btn schedule-btn-delete"
+                                    >
+                                        Delete
+                                    </button>
+
+                                </form>
+
+                            <?php endif; ?>
+
+                        </div>
+
                     </div>
 
                 <?php endforeach; ?>
@@ -723,7 +1078,7 @@ $greeting = $hour < 12
             <?php else: ?>
 
                 <p class="empty-message">
-                    No scheduled tasks available.
+                    No pending schedules. New schedules you add will appear here.
                 </p>
 
             <?php endif; ?>
@@ -740,68 +1095,70 @@ $greeting = $hour < 12
 
         <div class="quick-actions">
 
-            <a href="my_residents.php" class="quick-action">
-                <span class="quick-action-icon">&#9823;</span>
+            <a href="residents.php" class="quick-action">
+
+                <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
-                    <strong>My Residents</strong>
-                    <small>View assigned residents</small>
+                    <strong>Add / Manage Residents</strong>
+                    <small>Resident information</small>
                 </span>
+
             </a>
 
-            <a href="care_tasks.php" class="quick-action">
-                <span class="quick-action-icon">&#10003;</span>
+            <a href="caretakers_staff.php" class="quick-action">
+
+                <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
-                    <strong>Care Tasks</strong>
-                    <small>Review daily care activities</small>
+                    <strong>Manage Caretakers</strong>
+                    <small>Caretaker accounts and information</small>
                 </span>
+
             </a>
 
-            <a href="my_schedule.php" class="quick-action">
-                <span class="quick-action-icon">&#9638;</span>
+            <a href="rooms.php" class="quick-action">
+
+                <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
-                    <strong>My Schedule</strong>
-                    <small>Review your schedule</small>
+                    <strong>Manage Rooms</strong>
+                    <small>Room availability</small>
                 </span>
+
             </a>
 
-            <a href="health_information.php" class="quick-action">
-                <span class="quick-action-icon">&#9829;</span>
+            <a href="health_records.php" class="quick-action">
+
+                <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
-                    <strong>Health Information</strong>
-                    <small>Review resident health details</small>
+                    <strong>Health Records</strong>
+                    <small>Resident health information</small>
                 </span>
+
             </a>
 
-            <a href="messages.php" class="quick-action">
-                <span class="quick-action-icon">&#9993;</span>
+            <a href="announcements.php" class="quick-action">
+
+                <span class="quick-action-icon">+</span>
+
                 <span class="quick-action-text">
-                    <strong>Messages</strong>
-                    <small>Open your messages</small>
+                    <strong>Create Announcement</strong>
+                    <small>Publish an announcement</small>
                 </span>
+
             </a>
 
-            <a href="care_reports.php" class="quick-action">
-                <span class="quick-action-icon">&#9776;</span>
-                <span class="quick-action-text">
-                    <strong>Care Reports</strong>
-                    <small>Open care documentation</small>
-                </span>
-            </a>
+            <a href="schedules.php" class="quick-action">
 
-            <a href="incident_reports.php" class="quick-action">
-                <span class="quick-action-icon">&#9888;</span>
-                <span class="quick-action-text">
-                    <strong>Incident Reports</strong>
-                    <small>View or record incidents</small>
-                </span>
-            </a>
+                <span class="quick-action-icon">+</span>
 
-            <a href="profile.php" class="quick-action">
-                <span class="quick-action-icon">&#9881;</span>
                 <span class="quick-action-text">
-                    <strong>My Profile</strong>
-                    <small>View your account information</small>
+                    <strong>Create Schedule</strong>
+                    <small>Organize scheduled tasks</small>
                 </span>
+
             </a>
 
         </div>
@@ -812,32 +1169,145 @@ $greeting = $hour < 12
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
+<!-- SIDEBAR TOGGLE -->
+
 <script>
+
 document.addEventListener('DOMContentLoaded', function () {
 
-    /*
-     * Keep notification dismissal consistent with the admin dashboard.
-     */
+    var overlay = document.getElementById('sidebarOverlay');
+
+    var sidebar = document.querySelector(
+        '.sidebar, #sidebar, .sidebar-container, aside, nav'
+    );
+
+    if (!sidebar) {
+        return;
+    }
+
+    var oldTexts = [
+        'home for the aged',
+        'care management system'
+    ];
+
+    sidebar.querySelectorAll('*').forEach(function (el) {
+
+        if (
+            el.children.length === 0 &&
+            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
+        ) {
+            el.style.display = 'none';
+        }
+
+    });
+
+    if (!sidebar.querySelector('.sidebar-logo')) {
+
+        var logo = document.createElement('div');
+
+        logo.className = 'sidebar-logo';
+
+        logo.innerHTML =
+            '<a href="dashboard.php">' +
+            '<img src="../images/white1.png" ' +
+            'alt="Home for the Aged">' +
+            '</a>';
+
+        sidebar.insertBefore(logo, sidebar.firstChild);
+
+    }
+
+    if (!sidebar.querySelector('#sidebarToggle')) {
+
+        var toggleWrapper = document.createElement('div');
+
+        toggleWrapper.className = 'sidebar-toggle-wrapper';
+
+        toggleWrapper.innerHTML = `
+            <button type="button"
+                class="sidebar-toggle-btn"
+                id="sidebarToggle"
+                aria-label="Toggle Navigation Sidebar">
+
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+
+            </button>
+        `;
+
+        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
+
+    }
+
+    var toggleBtn = document.getElementById('sidebarToggle');
+
+    if (toggleBtn) {
+
+        toggleBtn.addEventListener('click', function () {
+
+            if (window.innerWidth <= 992) {
+
+                document.body.classList.toggle('sidebar-open');
+
+                if (overlay) {
+                    overlay.classList.toggle('active');
+                }
+
+            } else {
+
+                document.body.classList.toggle('sidebar-folded');
+
+            }
+
+        });
+
+    }
+
+    if (overlay) {
+
+        overlay.addEventListener('click', function () {
+
+            document.body.classList.remove('sidebar-open');
+
+            overlay.classList.remove('active');
+
+        });
+
+    }
+
+});
+
+</script>
+
+<!-- NOTIFICATIONS AND ANNOUNCEMENT READ STATUS -->
+
+<script>
+
+document.addEventListener('DOMContentLoaded', function () {
+
     document.querySelectorAll(
         '.notification-dot[data-notification-key]'
     ).forEach(function (dot) {
 
         const category = dot.dataset.notificationKey;
+
         const version = dot.dataset.notificationVersion;
+
         const storageKey = 'homeAgedRead_' + category;
+
         const dismissedVersion = category + ':' + version;
 
         try {
+
             if (localStorage.getItem(storageKey) === dismissedVersion) {
                 dot.remove();
             }
+
         } catch (error) {
-            // Dashboard remains usable when browser storage is unavailable.
         }
 
-        dot.addEventListener('click', function (event) {
-            event.preventDefault();
-            event.stopPropagation();
+        function dismissNotification() {
 
             try {
                 localStorage.setItem(storageKey, dismissedVersion);
@@ -845,42 +1315,69 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             dot.remove();
-        });
+
+        }
+
+        const widget = dot.closest('.stat-card, .widget');
+
+        if (widget) {
+
+            widget.addEventListener('click', function (event) {
+
+                if (event.target.closest('.mark-read-button')) {
+                    return;
+                }
+
+                dismissNotification();
+
+            });
+
+        }
+
     });
 
-    /*
-     * Mark announcements as read in this browser.
-     */
     document.querySelectorAll('.mark-read-button').forEach(function (button) {
 
         const key = 'homeAged_' + button.dataset.announcementKey;
+
         const item = button.closest('.announcement-item');
+
         const readLabel = item.querySelector('.read-label');
 
         function showAsRead() {
+
             button.hidden = true;
+
             readLabel.hidden = false;
+
             item.classList.add('announcement-read');
+
         }
 
         try {
+
             if (localStorage.getItem(key) === 'read') {
                 showAsRead();
             }
+
         } catch (error) {
         }
 
         button.addEventListener('click', function () {
+
             try {
                 localStorage.setItem(key, 'read');
             } catch (error) {
             }
 
             showAsRead();
+
         });
+
     });
 
 });
+
 </script>
 
 </body>

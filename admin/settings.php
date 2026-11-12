@@ -66,6 +66,7 @@ $pdo->exec("
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
 
+/* Kept so password and settings changes are still recorded in the database. */
 $pdo->exec("
     CREATE TABLE IF NOT EXISTS settings_activity (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -162,14 +163,6 @@ function settingsGetList(
     return is_array($decoded) ? $decoded : $default;
 }
 
-function settingsRedirect(string $section): void
-{
-    header(
-        'Location: settings.php?section=' . rawurlencode($section)
-    );
-    exit;
-}
-
 function settingsValidatePassword(string $password): void
 {
     if (strlen($password) < 8) {
@@ -188,15 +181,10 @@ function settingsValidatePassword(string $password): void
 */
 
 $sections = [
-    'facility'        => 'Facility Information',
-    'rooms'           => 'Room Management',
-    'care-levels'     => 'Care Levels',
     'notifications'   => 'Notification Settings',
-    'caretakers'      => 'Caretaker Accounts',
     'permissions'     => 'Permissions',
     'password'        => 'Change Password',
     'forgot-password' => 'Forgot Password',
-    'activity'        => 'Account Activity',
 ];
 
 $section = (string) ($_GET['section'] ?? '');
@@ -221,111 +209,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             /*
-            | Save facility information
-            */
-            if ($action === 'save_facility') {
-                $fields = [
-                    'facility_name',
-                    'facility_address',
-                    'facility_phone',
-                    'facility_email',
-                    'facility_license',
-                    'facility_motto',
-                ];
-
-                foreach ($fields as $key) {
-                    $value = trim((string) ($_POST[$key] ?? ''));
-
-                    if (strlen($value) > 2000) {
-                        throw new RuntimeException(
-                            'One of the facility fields is too long.'
-                        );
-                    }
-
-                    settingsSave(
-                        $pdo,
-                        $key,
-                        $value,
-                        $currentUser
-                    );
-                }
-
-                settingsLog(
-                    $pdo,
-                    $currentUser,
-                    'Updated facility information'
-                );
-
-                $notice = 'Facility information saved successfully.';
-                $section = 'facility';
-            }
-
-            /*
-            | Save care levels or room types
-            */
-            elseif ($action === 'save_list') {
-                $listKey = (string) ($_POST['list_key'] ?? '');
-
-                $allowedLists = [
-                    'care_levels',
-                    'room_types',
-                ];
-
-                if (!in_array($listKey, $allowedLists, true)) {
-                    throw new RuntimeException(
-                        'Invalid settings list.'
-                    );
-                }
-
-                $raw = trim((string) ($_POST['list_values'] ?? ''));
-
-                if (strlen($raw) > 20000) {
-                    throw new RuntimeException(
-                        'The submitted list is too long.'
-                    );
-                }
-
-                $lines = preg_split('/\R/u', $raw);
-
-                $items = array_values(array_unique(
-                    array_filter(
-                        array_map('trim', $lines ?: []),
-                        static function ($item) {
-                            return $item !== '';
-                        }
-                    )
-                ));
-
-                settingsSave(
-                    $pdo,
-                    $listKey,
-                    json_encode(
-                        $items,
-                        JSON_UNESCAPED_UNICODE |
-                        JSON_UNESCAPED_SLASHES
-                    ),
-                    $currentUser
-                );
-
-                settingsLog(
-                    $pdo,
-                    $currentUser,
-                    'Updated settings list',
-                    $listKey
-                );
-
-                $section = match ($listKey) {
-                    'care_levels' => 'care-levels',
-                    default => 'rooms',
-                };
-
-                $notice = 'List saved successfully.';
-            }
-
-            /*
             | Save notification preferences
             */
-            elseif ($action === 'save_notifications') {
+            if ($action === 'save_notifications') {
                 $preferences = [
                     'email_notifications' =>
                         isset($_POST['email_notifications']) ? '1' : '0',
@@ -523,43 +409,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 |--------------------------------------------------------------------------
 */
 
-$facility = [];
-
-foreach ([
-    'facility_name',
-    'facility_address',
-    'facility_phone',
-    'facility_email',
-    'facility_license',
-    'facility_motto',
-] as $key) {
-    $facility[$key] = settingsGet($pdo, $key);
-}
-
-$careLevels = settingsGetList(
-    $pdo,
-    'care_levels',
-    ['Independent living', 'Assisted living', 'Full assistance']
-);
-
-$roomTypes = settingsGetList(
-    $pdo,
-    'room_types',
-    ['Private', 'Shared', 'Medical']
-);
-
 $permissions = settingsGetList(
     $pdo,
     'role_permissions',
     []
 );
-
-$activityRows = $pdo->query("
-    SELECT user_id, action, details, created_at
-    FROM settings_activity
-    ORDER BY id DESC
-    LIMIT 100
-")->fetchAll();
 
 /*
 |--------------------------------------------------------------------------
@@ -723,12 +577,12 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             margin: 0 0 8px;
             font-size: 30px;
             line-height: 1.2;
-            color: #163421;
+            color: #093d1c;
         }
 
         .page-heading p {
             margin: 0;
-            color: #657168;
+            color: #093d1c;
             line-height: 1.6;
         }
 
@@ -755,45 +609,69 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             line-height: 1.55;
         }
 
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
-            width: 100%;
+        /* Single settings card: grouped list of links */
+        .settings-group + .settings-group {
+            margin-top: 26px;
         }
 
-        .setting-card {
+        .settings-group h3 {
+            margin: 0 0 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e1ebe4;
+            font-size: 13px;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: #0b5426;
+        }
+
+        .setting-row {
             display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
-            min-width: 0;
-            padding: 18px;
-            background: #fff;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 14px 12px;
+            border-bottom: 1px solid #edf1ed;
+            border-radius: 8px;
             color: #20372a;
             text-decoration: none;
-            border: 1px solid #dce5de;
-            border-radius: 12px;
-            transition: transform .15s ease,
-                        border-color .15s ease,
-                        box-shadow .15s ease;
+            transition: background .15s ease;
         }
 
-        .setting-card:hover {
-            border-color: #7aa889;
-            box-shadow: 0 5px 15px rgba(16, 45, 25, .08);
-            transform: translateY(-2px);
+        .setting-row:last-child {
+            border-bottom: 0;
         }
 
-        .setting-card strong {
+        .setting-row:hover {
+            background: #f1f6f2;
+        }
+
+        .setting-row:focus-visible {
+            outline: 3px solid #2f80d9;
+            outline-offset: -2px;
+        }
+
+        .setting-text {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+        }
+
+        .setting-text strong {
             font-size: 16px;
             color: #0b5426;
         }
 
-        .setting-card span {
+        .setting-text span {
             font-size: 13px;
             line-height: 1.5;
             color: #657168;
+        }
+
+        .setting-arrow {
+            flex: 0 0 auto;
+            font-size: 20px;
+            color: #7aa889;
         }
 
         .notice {
@@ -830,12 +708,6 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             text-decoration: underline;
         }
 
-        .form-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 16px;
-        }
-
         .field {
             display: flex;
             flex-direction: column;
@@ -844,19 +716,13 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             min-width: 0;
         }
 
-        .field.full {
-            grid-column: 1 / -1;
-        }
-
         .field label {
             font-size: 14px;
             font-weight: 700;
             color: #263b2c;
         }
 
-        .field input,
-        .field textarea,
-        .field select {
+        .field input {
             width: 100%;
             padding: 11px 12px;
             border: 1px solid #cbd7ce;
@@ -867,14 +733,7 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             outline: none;
         }
 
-        .field textarea {
-            min-height: 110px;
-            resize: vertical;
-        }
-
-        .field input:focus,
-        .field textarea:focus,
-        .field select:focus {
+        .field input:focus {
             border-color: #2e8050;
             box-shadow: 0 0 0 3px rgba(46, 128, 80, .12);
         }
@@ -993,12 +852,6 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             outline: none !important;
         }
 
-        @media (max-width: 1050px) {
-            .cards {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-
         @media (max-width: 760px) {
             .menu-toggle {
                 display: inline-flex;
@@ -1034,18 +887,6 @@ if (is_file(__DIR__ . '/caretakers.php')) {
                 margin-left: 0 !important;
                 width: 100% !important;
                 padding: 70px 12px 18px !important;
-            }
-
-            .cards {
-                grid-template-columns: 1fr;
-            }
-
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .field.full {
-                grid-column: auto;
             }
 
             .page-heading h1 {
@@ -1090,7 +931,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
 <header class="page-heading">
     <div>
         <h1>Settings</h1>
-        <p>Manage facility information, configuration, accounts, and security.</p>
+        <p>Manage notifications, accounts, permissions, and security.</p>
     </div>
 </header>
 
@@ -1108,83 +949,64 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
 <?php if ($section === ''): ?>
 
-    <!-- SETTINGS OVERVIEW -->
+    <!-- SETTINGS OVERVIEW (one card, grouped) -->
 
     <section class="panel">
         <h2>System Settings</h2>
         <p class="description">
-            Configure facility information and the options used by your team.
+            Choose a setting to view or change.
         </p>
 
-        <div class="cards">
+        <div class="settings-group">
+            <h3>System</h3>
 
-            <a class="setting-card" href="settings.php?section=facility">
-                <strong>Facility Information</strong>
-                <span>Edit the facility name, contact details, address, and registration information.</span>
+            <a class="setting-row" href="settings.php?section=notifications">
+                <div class="setting-text">
+                    <strong>Notification Settings</strong>
+                    <span>Save preferences for alerts and reminders.</span>
+                </div>
+                <span class="setting-arrow" aria-hidden="true">&rsaquo;</span>
             </a>
-
-            <a class="setting-card" href="settings.php?section=rooms">
-                <strong>Room Management</strong>
-                <span>Manage room-type settings or open the existing Rooms module.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=care-levels">
-                <strong>Care Levels</strong>
-                <span>Maintain the list of care levels used by the facility.</span>
-            </a>
-
-            <a class="setting-card" href="settings.php?section=notifications">
-                <strong>Notification Settings</strong>
-                <span>Save preferences for alerts and reminders.</span>
-            </a>
-
         </div>
-    </section>
 
-    <section class="panel">
-        <h2>Account Management</h2>
-        <p class="description">
-            Open the existing account modules or configure permission preferences.
-        </p>
+        <div class="settings-group">
+            <h3>Account Management</h3>
 
-        <div class="cards">
-
-            <a class="setting-card" href="<?= settingsEscape($caretakerLink) ?>">
-                <strong>Caretaker Accounts</strong>
-                <span>Open caretaker account management.</span>
+            <a class="setting-row" href="<?= settingsEscape($caretakerLink) ?>">
+                <div class="setting-text">
+                    <strong>Caretaker Accounts</strong>
+                    <span>Open caretaker account management.</span>
+                </div>
+                <span class="setting-arrow" aria-hidden="true">&rsaquo;</span>
             </a>
 
-            <a class="setting-card" href="settings.php?section=permissions">
-                <strong>Permissions</strong>
-                <span>Configure role permission preferences for Admin and Caretaker.</span>
+            <a class="setting-row" href="settings.php?section=permissions">
+                <div class="setting-text">
+                    <strong>Permissions</strong>
+                    <span>Configure role permission preferences for Admin and Caretaker.</span>
+                </div>
+                <span class="setting-arrow" aria-hidden="true">&rsaquo;</span>
             </a>
-
         </div>
-    </section>
 
-    <section class="panel">
-        <h2>Security and Activity</h2>
-        <p class="description">
-            Manage passwords and review changes made through Settings.
-        </p>
+        <div class="settings-group">
+            <h3>Security</h3>
 
-        <div class="cards">
-
-            <a class="setting-card" href="settings.php?section=password">
-                <strong>Change Password</strong>
-                <span>Change the password of your own account.</span>
+            <a class="setting-row" href="settings.php?section=password">
+                <div class="setting-text">
+                    <strong>Change Password</strong>
+                    <span>Change the password of your own account.</span>
+                </div>
+                <span class="setting-arrow" aria-hidden="true">&rsaquo;</span>
             </a>
 
-            <a class="setting-card" href="settings.php?section=forgot-password">
-                <strong>Forgot Password</strong>
-                <span>Set a new password for an account whose owner forgot it.</span>
+            <a class="setting-row" href="settings.php?section=forgot-password">
+                <div class="setting-text">
+                    <strong>Forgot Password</strong>
+                    <span>Set a new password for an account whose owner forgot it.</span>
+                </div>
+                <span class="setting-arrow" aria-hidden="true">&rsaquo;</span>
             </a>
-
-            <a class="setting-card" href="settings.php?section=activity">
-                <strong>Account Activity</strong>
-                <span>Review changes made from this Settings page.</span>
-            </a>
-
         </div>
     </section>
 
@@ -1195,157 +1017,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <strong><?= settingsEscape($sections[$section]) ?></strong>
     </div>
 
-    <?php if ($section === 'facility'): ?>
-
-        <section class="panel">
-            <h2>Facility Information</h2>
-            <p class="description">
-                Update the information saved in the application settings table.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_facility">
-
-                <div class="form-grid">
-
-                    <div class="field">
-                        <label for="facility_name">Facility Name</label>
-                        <input
-                            id="facility_name"
-                            name="facility_name"
-                            type="text"
-                            maxlength="200"
-                            value="<?= settingsEscape($facility['facility_name']) ?>"
-                            required
-                        >
-                    </div>
-
-                    <div class="field">
-                        <label for="facility_phone">Phone Number</label>
-                        <input
-                            id="facility_phone"
-                            name="facility_phone"
-                            type="tel"
-                            maxlength="100"
-                            value="<?= settingsEscape($facility['facility_phone']) ?>"
-                        >
-                    </div>
-
-                    <div class="field full">
-                        <label for="facility_address">Address</label>
-                        <textarea
-                            id="facility_address"
-                            name="facility_address"
-                            maxlength="2000"
-                        ><?= settingsEscape($facility['facility_address']) ?></textarea>
-                    </div>
-
-                    <div class="field">
-                        <label for="facility_email">Email Address</label>
-                        <input
-                            id="facility_email"
-                            name="facility_email"
-                            type="email"
-                            maxlength="200"
-                            value="<?= settingsEscape($facility['facility_email']) ?>"
-                        >
-                    </div>
-
-                    <div class="field">
-                        <label for="facility_license">License / Registration Number</label>
-                        <input
-                            id="facility_license"
-                            name="facility_license"
-                            type="text"
-                            maxlength="200"
-                            value="<?= settingsEscape($facility['facility_license']) ?>"
-                        >
-                    </div>
-
-                    <div class="field full">
-                        <label for="facility_motto">Motto / Description</label>
-                        <textarea
-                            id="facility_motto"
-                            name="facility_motto"
-                            maxlength="2000"
-                        ><?= settingsEscape($facility['facility_motto']) ?></textarea>
-                    </div>
-
-                </div>
-
-                <div class="actions">
-                    <button class="btn" type="submit">
-                        Save Facility Information
-                    </button>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'rooms'): ?>
-
-        <section class="panel">
-            <h2>Room Management</h2>
-            <p class="description">
-                Maintain room-type options. This list is separate from actual room records.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_list">
-                <input type="hidden" name="list_key" value="room_types">
-
-                <div class="field">
-                    <label for="list_values">Room Types (one per line)</label>
-                    <textarea id="list_values" name="list_values"><?= settingsEscape(implode("\n", $roomTypes)) ?></textarea>
-                    <span class="help">
-                        Saving this list does not create, edit, or delete actual room records.
-                    </span>
-                </div>
-
-                <div class="actions">
-                    <button class="btn" type="submit">Save Room Types</button>
-                    <a class="btn secondary" href="/homefor_thetander/admin/rooms.php">
-                        Open Rooms Module
-                    </a>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'care-levels'): ?>
-
-        <?php
-        $listKey = 'care_levels';
-        $items = $careLevels;
-        ?>
-
-        <section class="panel">
-            <h2>Care Levels</h2>
-
-            <p class="description">
-                Enter one item per line. Empty lines are ignored and duplicates are removed.
-            </p>
-
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= settingsEscape($csrf) ?>">
-                <input type="hidden" name="action" value="save_list">
-                <input type="hidden" name="list_key" value="<?= settingsEscape($listKey) ?>">
-
-                <div class="field">
-                    <label for="list_values">
-                        Care Levels
-                    </label>
-
-                    <textarea id="list_values" name="list_values" required><?= settingsEscape(implode("\n", $items)) ?></textarea>
-                </div>
-
-                <div class="actions">
-                    <button class="btn" type="submit">Save List</button>
-                </div>
-            </form>
-        </section>
-
-    <?php elseif ($section === 'notifications'): ?>
+    <?php if ($section === 'notifications'): ?>
 
         <section class="panel">
             <h2>Notification Settings</h2>
@@ -1385,20 +1057,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     </button>
                 </div>
             </form>
-        </section>
-
-    <?php elseif ($section === 'caretakers'): ?>
-
-        <section class="panel">
-            <h2><?= settingsEscape($sections[$section]) ?></h2>
-
-            <p class="description">
-                Open the existing account-management module to manage accounts.
-            </p>
-
-            <a class="btn" href="<?= settingsEscape($caretakerLink) ?>">
-                Open Caretaker Accounts
-            </a>
         </section>
 
     <?php elseif ($section === 'permissions'): ?>
@@ -1574,44 +1232,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     </button>
                 </div>
             </form>
-        </section>
-
-    <?php elseif ($section === 'activity'): ?>
-
-        <section class="panel">
-            <h2>Account Activity</h2>
-
-            <p class="description">
-                Review changes recorded through this Settings page.
-            </p>
-
-            <?php if (!$activityRows): ?>
-                <p>No activity recorded yet. Saving a setting creates an entry.</p>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>User ID</th>
-                                <th>Action</th>
-                                <th>Details</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            <?php foreach ($activityRows as $row): ?>
-                                <tr>
-                                    <td><?= settingsEscape($row['user_id']) ?></td>
-                                    <td><?= settingsEscape($row['action']) ?></td>
-                                    <td><?= settingsEscape($row['details']) ?></td>
-                                    <td><?= settingsEscape($row['created_at']) ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endif; ?>
         </section>
 
     <?php endif; ?>
