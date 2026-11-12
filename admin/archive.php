@@ -6,7 +6,7 @@
  *
  * Flow:  Archive (soft delete, from Residents / Caretakers page)
  *        -> Restore, or Delete permanently (hard delete, this page only).
- * Only archived records can be deleted permanently.
+ * Only archived records can be permanently deleted.
  * Caretakers' personal resident archives are separate and not shown here.
  */
 
@@ -347,7 +347,7 @@ try {
     if ($tab === 'caretakers') {
 
         $sql = "
-            SELECT id, employee_id, full_name, contact, position, shift,
+            SELECT id, full_name, username, contact, position, shift,
                    status, archived_at
             FROM caretakers
             WHERE archived_at IS NOT NULL
@@ -355,8 +355,8 @@ try {
 
         if ($search !== '') {
             $sql .= " AND (
-                employee_id LIKE :s1
-                OR full_name LIKE :s2
+                full_name LIKE :s1
+                OR username LIKE :s2
                 OR contact LIKE :s3
                 OR position LIKE :s4
             )";
@@ -555,7 +555,7 @@ $isCaretakers = $tab === 'caretakers';
             href="<?= $isCaretakers ? 'caretakers.php' : 'residents.php' ?>"
             class="btn btn-outline-success"
         >
-           
+            
         </a>
     </div>
 
@@ -608,7 +608,7 @@ $isCaretakers = $tab === 'caretakers';
                     name="search"
                     class="form-control"
                     placeholder="<?= $isCaretakers
-                        ? 'Search name, employee ID, contact, or position...'
+                        ? 'Search full name, username, contact, or position...'
                         : 'Search name, ID, room, caretaker, or condition...' ?>"
                     value="<?= h($search) ?>"
                 >
@@ -636,8 +636,8 @@ $isCaretakers = $tab === 'caretakers';
                     <thead>
                         <tr>
                             <?php if ($isCaretakers): ?>
-                                <th>Employee ID</th>
                                 <th>Full Name</th>
+                                <th>User Name</th>
                                 <th>Contact</th>
                                 <th>Position</th>
                                 <th>Shift</th>
@@ -669,8 +669,8 @@ $isCaretakers = $tab === 'caretakers';
                             ?>
                             <tr>
                                 <?php if ($isCaretakers): ?>
-                                    <td><?= h($row['employee_id']) ?></td>
                                     <td><?= h($row['full_name']) ?></td>
+                                    <td><?= h($row['username']) ?></td>
                                     <td><?= h($row['contact'] ?: 'N/A') ?></td>
                                     <td><?= h($row['position'] ?: 'N/A') ?></td>
                                     <td><?= h($row['shift'] ?: 'N/A') ?></td>
