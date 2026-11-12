@@ -2,7 +2,7 @@
 <?php
 /**
  * HOME FOR THE AGED
- * SIMPLE ADMIN REPORTS MODULE
+ * ADMIN REPORTS MODULE
  * File: admin/reports.php
  */
 
@@ -29,11 +29,13 @@ if (empty($_SESSION['reports_csrf'])) {
     $_SESSION['reports_csrf'] = bin2hex(random_bytes(32));
 }
 
-function h($value): string {
+function h($value): string
+{
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-function reportDate($date): string {
+function reportDate($date): string
+{
     $time = strtotime((string)$date);
     return $time ? date('M d, Y', $time) : '';
 }
@@ -61,12 +63,14 @@ if (!in_array($tab, ['active', 'archive', 'add'], true)) {
 $error = '';
 $success = '';
 
-/* CREATE TABLE IF NOT EXISTS */
+/* CREATE REPORTS TABLE IF IT DOES NOT EXIST */
+
 $pdo->exec("
     CREATE TABLE IF NOT EXISTS incident_reports (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         report_type VARCHAR(40) NOT NULL,
-        related_to ENUM('Resident','Caretaker','General') NOT NULL DEFAULT 'General',
+        related_to ENUM('Resident','Caretaker','General')
+            NOT NULL DEFAULT 'General',
         resident_id INT NULL,
         caretaker_name VARCHAR(150) NULL,
         location VARCHAR(100) NULL,
@@ -84,7 +88,8 @@ $pdo->exec("
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ");
 
-/* CHECK RESIDENT ARCHIVE COLUMN */
+/* CHECK RESIDENT TABLE COLUMNS */
+
 $residentColumns = $pdo->query(
     "SHOW COLUMNS FROM residents"
 )->fetchAll(PDO::FETCH_COLUMN);
@@ -93,22 +98,27 @@ $hasResidentArchive = in_array('archived_at', $residentColumns, true);
 
 $residentArchiveCondition = $hasResidentArchive
     ? "AND archived_at IS NULL"
-    : "AND status <> 'archived'";
+    : "AND COALESCE(status, '') <> 'archived'";
 
-/* PROCESS ACTIONS */
+/* PROCESS FORM ACTIONS */
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
+
         if (!hash_equals(
             $_SESSION['reports_csrf'],
             (string)($_POST['csrf_token'] ?? '')
         )) {
-            throw new RuntimeException('Invalid security token. Refresh the page.');
+            throw new RuntimeException(
+                'Invalid security token. Please refresh the page.'
+            );
         }
 
         $action = $_POST['action'] ?? '';
 
         /* ADD REPORT */
+
         if ($action === 'add') {
 
             $reportType = trim($_POST['report_type'] ?? '');
@@ -116,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $residentId = $_POST['resident_id'] ?? null;
             $caretakerName = trim($_POST['caretaker_name'] ?? '');
             $location = trim($_POST['location'] ?? '');
-            $reportDate = trim($_POST['report_date'] ?? '');
+            $reportDateValue = trim($_POST['report_date'] ?? '');
             $details = trim($_POST['details'] ?? '');
 
             if (!in_array($reportType, $types, true)) {
@@ -127,13 +137,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Please select a valid related person.');
             }
 
-            $dateObject = DateTime::createFromFormat('!Y-m-d', $reportDate);
+            $dateObject = DateTime::createFromFormat(
+                '!Y-m-d',
+                $reportDateValue
+            );
 
-            if (!$dateObject || $dateObject->format('Y-m-d') !== $reportDate) {
-                throw new RuntimeException('Please enter a valid date.');
+            if (
+                !$dateObject ||
+                $dateObject->format('Y-m-d') !== $reportDateValue
+            ) {
+                throw new RuntimeException('Please enter a valid report date.');
             }
 
-            if ($reportDate > date('Y-m-d', strtotime('+1 day'))) {
+            if ($reportDateValue > date('Y-m-d', strtotime('+1 day'))) {
                 throw new RuntimeException('Report date cannot be in the future.');
             }
 
@@ -152,8 +168,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $check = $pdo->prepare("
-                    SELECT id FROM residents
-                    WHERE id = :id $residentArchiveCondition
+                    SELECT id
+                    FROM residents
+                    WHERE id = :id
+                    $residentArchiveCondition
+                    LIMIT 1
                 ");
 
                 $check->execute(['id' => $residentId]);
@@ -169,7 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $check = $pdo->prepare("
-                    SELECT id FROM caretakers
+                    SELECT id
+                    FROM caretakers
                     WHERE full_name = :name
                     AND archived_at IS NULL
                     LIMIT 1
@@ -183,8 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $stmt = $pdo->prepare("
-                INSERT INTO incident_reports
-                (
+                INSERT INTO incident_reports (
                     report_type,
                     related_to,
                     resident_id,
@@ -195,8 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     status,
                     created_by
                 )
-                VALUES
-                (
+                VALUES (
                     :type,
                     :related,
                     :resident,
@@ -215,7 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'resident' => $relatedTo === 'Resident' ? $residentId : null,
                 'caretaker' => $relatedTo === 'Caretaker' ? $caretakerName : null,
                 'location' => $location ?: null,
-                'report_date' => $reportDate,
+                'report_date' => $reportDateValue,
                 'details' => $details,
                 'creator' => (string)$_SESSION['user_id']
             ]);
@@ -224,23 +242,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        /* UPDATE STATUS */
+        /* UPDATE REPORT STATUS */
+
         if ($action === 'update_status') {
 
-            $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
-            $status = $_POST['status'] ?? '';
+            $id = filter_var(
+                $_POST['id'] ?? null,
+                FILTER_VALIDATE_INT
+            );
 
-            if (!$id || !in_array($status, $statuses, true)) {
-                throw new RuntimeException('Invalid report information.');
+            $status = trim($_POST['status'] ?? '');
+
+            if (!$id) {
+                throw new RuntimeException('Invalid report ID.');
             }
 
-            $stmt = $pdo->prepare("
-                UPDATE incident_reports
-                SET status = :status
-                WHERE id = :id AND archived_at IS NULL
+            if (!in_array($status, $statuses, true)) {
+                throw new RuntimeException('Please select a valid report status.');
+            }
+
+            // Make sure the report exists and is not archived.
+            $check = $pdo->prepare("
+                SELECT id
+                FROM incident_reports
+                WHERE id = :id
+                AND archived_at IS NULL
+                LIMIT 1
             ");
 
-            $stmt->execute([
+            $check->execute(['id' => $id]);
+
+            if (!$check->fetch()) {
+                throw new RuntimeException('Report not found or already archived.');
+            }
+
+            // Save the new status.
+            $update = $pdo->prepare("
+                UPDATE incident_reports
+                SET status = :status
+                WHERE id = :id
+                AND archived_at IS NULL
+            ");
+
+            $update->execute([
                 'status' => $status,
                 'id' => $id
             ]);
@@ -250,9 +294,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         /* ARCHIVE REPORT */
+
         if ($action === 'archive') {
 
-            $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+            $id = filter_var(
+                $_POST['id'] ?? null,
+                FILTER_VALIDATE_INT
+            );
 
             if (!$id) {
                 throw new RuntimeException('Invalid report ID.');
@@ -261,7 +309,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("
                 UPDATE incident_reports
                 SET archived_at = NOW()
-                WHERE id = :id AND archived_at IS NULL
+                WHERE id = :id
+                AND archived_at IS NULL
             ");
 
             $stmt->execute(['id' => $id]);
@@ -275,36 +324,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         /* RESTORE REPORT */
+
         if ($action === 'restore') {
 
-            $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+            $id = filter_var(
+                $_POST['id'] ?? null,
+                FILTER_VALIDATE_INT
+            );
+
+            if (!$id) {
+                throw new RuntimeException('Invalid report ID.');
+            }
 
             $stmt = $pdo->prepare("
                 UPDATE incident_reports
                 SET archived_at = NULL
-                WHERE id = :id AND archived_at IS NOT NULL
+                WHERE id = :id
+                AND archived_at IS NOT NULL
             ");
 
             $stmt->execute(['id' => $id]);
+
+            if (!$stmt->rowCount()) {
+                throw new RuntimeException('Archived report not found.');
+            }
 
             header('Location: reports.php?tab=archive&success=restored');
             exit;
         }
 
         /* PERMANENT DELETE */
+
         if ($action === 'delete') {
 
-            $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+            $id = filter_var(
+                $_POST['id'] ?? null,
+                FILTER_VALIDATE_INT
+            );
+
+            if (!$id) {
+                throw new RuntimeException('Invalid report ID.');
+            }
 
             $stmt = $pdo->prepare("
                 DELETE FROM incident_reports
-                WHERE id = :id AND archived_at IS NOT NULL
+                WHERE id = :id
+                AND archived_at IS NOT NULL
             ");
 
             $stmt->execute(['id' => $id]);
 
             if (!$stmt->rowCount()) {
-                throw new RuntimeException('Only archived reports can be deleted.');
+                throw new RuntimeException(
+                    'Only archived reports can be permanently deleted.'
+                );
             }
 
             header('Location: reports.php?tab=archive&success=deleted');
@@ -314,7 +387,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         throw new RuntimeException('Invalid action.');
 
     } catch (Throwable $e) {
+
         error_log('Reports error: ' . $e->getMessage());
+
         $error = $e instanceof RuntimeException
             ? $e->getMessage()
             : 'Unable to process the report. Please check your database.';
@@ -322,6 +397,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* SUCCESS MESSAGES */
+
 $messages = [
     'added' => 'Report submitted successfully.',
     'updated' => 'Report status updated successfully.',
@@ -333,16 +409,18 @@ $messages = [
 $success = $messages[$_GET['success'] ?? ''] ?? '';
 
 /* LOAD REPORTS */
+
 $archived = $tab === 'archive';
 
 $stmt = $pdo->prepare("
-    SELECT i.*,
-           r.first_name,
-           r.middle_name,
-           r.last_name
+    SELECT
+        i.*,
+        r.first_name,
+        r.middle_name,
+        r.last_name
     FROM incident_reports i
     LEFT JOIN residents r ON r.id = i.resident_id
-    WHERE i.archived_at " . ($archived ? 'IS NOT NULL' : 'IS NULL') . "
+    WHERE i.archived_at " . ($archived ? "IS NOT NULL" : "IS NULL") . "
     ORDER BY i.report_date DESC, i.id DESC
 ");
 
@@ -350,6 +428,7 @@ $stmt->execute();
 $reports = $stmt->fetchAll();
 
 /* LOAD RESIDENTS */
+
 $residents = $pdo->query("
     SELECT id, resident_id, first_name, middle_name, last_name
     FROM residents
@@ -360,6 +439,7 @@ $residents = $pdo->query("
 ")->fetchAll();
 
 /* LOAD CARETAKERS */
+
 $caretakers = $pdo->query("
     SELECT full_name
     FROM caretakers
@@ -372,7 +452,9 @@ $caretakers = $pdo->query("
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -381,6 +463,7 @@ $caretakers = $pdo->query("
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
+
 * {
     box-sizing: border-box;
 }
@@ -388,7 +471,7 @@ $caretakers = $pdo->query("
 body {
     margin: 0;
     background: #f4f8f5;
-    color: #e8f1ec;
+    color: #304b3b;
     font-family: Arial, Helvetica, sans-serif;
     overflow-x: hidden;
 }
@@ -423,12 +506,12 @@ body {
 }
 
 .panel {
-    background: white;
+    background: #ffffff;
     border: 1px solid #e3eee6;
     border-radius: 10px;
     padding: 20px;
     margin-bottom: 18px;
-    box-shadow: 0 2px 10px SSrgba(216, 241, 225, 0.04);
+    box-shadow: 0 2px 10px rgba(216, 241, 225, 0.25);
 }
 
 .report-tabs {
@@ -441,8 +524,8 @@ body {
 .report-tabs a {
     padding: 10px 17px;
     border-radius: 7px;
-    border: 1px solid #415e46;
-    background: white;
+    border: 1px solid #cedbd1;
+    background: #ffffff;
     color: #304b3b;
     text-decoration: none;
     font-size: 13px;
@@ -452,7 +535,7 @@ body {
 .report-tabs a.active,
 .report-tabs a:hover {
     background: #17683a;
-    color: white;
+    color: #ffffff;
     border-color: #17683a;
 }
 
@@ -472,7 +555,7 @@ body {
 .form-control:focus,
 .form-select:focus {
     border-color: #33b960;
-    box-shadow: 0 0 0 .15rem rgba(232, 235, 233, 0.66);
+    box-shadow: 0 0 0 .15rem rgba(51, 185, 96, 0.15);
 }
 
 .table-wrap {
@@ -505,28 +588,29 @@ body {
     white-space: nowrap;
 }
 
-.open {
+.status-open {
     background: #fde2e2;
     color: #c0262d;
 }
 
-.progress {
+.status-progress {
     background: #fff1c9;
     color: #b26a00;
 }
 
-.resolved {
+.status-resolved {
     background: #d9f5e3;
     color: #17683a;
 }
 
 .btn-success {
-    background: #198754;
-    border-color: #198754;
+    background: #17683a;
+    border-color: #17683a;
 }
 
 .btn-success:hover {
-    background: #157347;
+    background: #0b5425;
+    border-color: #0b5425;
 }
 
 .btn-sm {
@@ -546,7 +630,36 @@ body {
     overflow-wrap: anywhere;
 }
 
+.edit-status-btn {
+    background: #ffffff;
+    color: #17683a;
+    border: 1px solid #c2c500;
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.edit-status-btn:hover {
+    background: #04692be5;
+    color: #ffffff;
+}
+
+.modal-content {
+    border: 1px solid #dcecdf;
+    border-radius: 10px;
+}
+
+.modal-header {
+    background: #edf8ef;
+}
+
+.modal-title {
+    color: #17683a;
+}
+
 @media(max-width: 760px) {
+
     .app-main {
         margin-left: 0 !important;
         width: 100% !important;
@@ -563,6 +676,7 @@ body {
 }
 
 @media print {
+
     .app-sidebar,
     .report-tabs,
     .no-print {
@@ -576,10 +690,12 @@ body {
     }
 
     body {
-        background: white !important;
+        background: #ffffff !important;
     }
 }
+
 </style>
+
 </head>
 
 <body>
@@ -587,6 +703,7 @@ body {
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
 <!-- PAGE HEADER -->
+
 <div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
 
     <div>
@@ -595,6 +712,7 @@ body {
     </div>
 
     <div class="d-flex flex-wrap gap-2 no-print">
+
         <a href="reports.php?tab=add" class="btn btn-success btn-sm">
             + Add Report
         </a>
@@ -602,11 +720,13 @@ body {
         <button onclick="window.print()" class="btn btn-outline-success btn-sm">
             Print
         </button>
+
     </div>
 
 </div>
 
 <!-- NAVIGATION -->
+
 <nav class="report-tabs no-print">
 
     <a href="reports.php?tab=active"
@@ -627,6 +747,7 @@ body {
 </nav>
 
 <!-- MESSAGES -->
+
 <?php if ($error): ?>
     <div class="alert alert-danger"><?= h($error) ?></div>
 <?php endif; ?>
@@ -637,6 +758,7 @@ body {
 
 
 <!-- ADD REPORT -->
+
 <?php if ($tab === 'add'): ?>
 
 <section class="panel">
@@ -649,13 +771,16 @@ body {
                value="<?= h($_SESSION['reports_csrf']) ?>">
 
         <input type="hidden" name="action" value="add">
+        <input type="hidden" name="tab" value="add">
 
         <div class="row g-3">
 
             <div class="col-md-6">
+
                 <label class="form-label">Report Type *</label>
 
                 <select name="report_type" class="form-select" required>
+
                     <option value="">Select report type</option>
 
                     <?php foreach ($types as $type): ?>
@@ -665,9 +790,11 @@ body {
                     <?php endforeach; ?>
 
                 </select>
+
             </div>
 
             <div class="col-md-6">
+
                 <label class="form-label">Related To *</label>
 
                 <select name="related_to" id="related_to"
@@ -678,6 +805,7 @@ body {
                     <option value="General">General</option>
 
                 </select>
+
             </div>
 
             <div class="col-md-6" id="residentGroup">
@@ -727,29 +855,35 @@ body {
             </div>
 
             <div class="col-md-6">
+
                 <label class="form-label">Report Date *</label>
 
                 <input type="date" name="report_date"
                        class="form-control"
                        value="<?= date('Y-m-d') ?>" required>
+
             </div>
 
             <div class="col-md-6">
+
                 <label class="form-label">Location</label>
 
                 <input type="text" name="location"
                        class="form-control"
                        maxlength="100"
                        placeholder="e.g. Room 101">
+
             </div>
 
             <div class="col-12">
+
                 <label class="form-label">Report Details *</label>
 
                 <textarea name="details" class="form-control"
                           rows="5" maxlength="5000"
                           placeholder="Describe what happened..."
                           required></textarea>
+
             </div>
 
         </div>
@@ -775,6 +909,7 @@ body {
 
 
 <!-- ACTIVE AND ARCHIVED REPORTS -->
+
 <?php if ($tab === 'active' || $tab === 'archive'): ?>
 
 <section class="panel">
@@ -783,6 +918,7 @@ body {
                 align-items-center gap-2 mb-3">
 
         <div>
+
             <h2 class="section-title mb-1">
                 <?= $tab === 'archive' ? 'Archived Reports' : 'Active Reports' ?>
             </h2>
@@ -790,6 +926,7 @@ body {
             <small class="text-secondary">
                 <?= count($reports) ?> report(s) found.
             </small>
+
         </div>
 
         <?php if ($tab === 'active'): ?>
@@ -808,6 +945,7 @@ body {
         <table class="table table-hover mb-0">
 
             <thead>
+
                 <tr>
                     <th>Report ID</th>
                     <th>Date</th>
@@ -817,6 +955,7 @@ body {
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
+
             </thead>
 
             <tbody>
@@ -838,6 +977,7 @@ body {
                     $related = $r['related_to'];
 
                     if ($related === 'Resident') {
+
                         $name = trim(
                             ($r['first_name'] ?? '') . ' ' .
                             ($r['middle_name'] ?? '') . ' ' .
@@ -845,22 +985,27 @@ body {
                         );
 
                         $related .= ': ' . ($name ?: 'Resident');
+
                     } elseif ($related === 'Caretaker') {
+
                         $related .= ': ' . ($r['caretaker_name'] ?? '');
+
                     }
 
                     $statusClass = match ($r['status']) {
-                        'Open' => 'open',
-                        'In Progress' => 'progress',
-                        'Resolved' => 'resolved',
-                        default => 'open'
+                        'Open' => 'status-open',
+                        'In Progress' => 'status-progress',
+                        'Resolved' => 'status-resolved',
+                        default => 'status-open'
                     };
 
                     ?>
 
                     <tr>
 
-                        <td>INC-<?= str_pad((string)$r['id'], 3, '0', STR_PAD_LEFT) ?></td>
+                        <td>
+                            INC-<?= str_pad((string)$r['id'], 3, '0', STR_PAD_LEFT) ?>
+                        </td>
 
                         <td><?= h(reportDate($r['report_date'])) ?></td>
 
@@ -871,14 +1016,18 @@ body {
                         <td><?= h($r['location'] ?: '—') ?></td>
 
                         <td>
+
                             <span class="status <?= $statusClass ?>">
                                 <?= h($r['status']) ?>
                             </span>
+
                         </td>
 
                         <td>
 
                             <div class="d-flex flex-wrap gap-1">
+
+                                <!-- VIEW BUTTON -->
 
                                 <button type="button"
                                         class="btn btn-outline-success btn-sm viewReport"
@@ -898,16 +1047,20 @@ body {
 
                                 <?php if ($tab === 'active'): ?>
 
-                                    <button type="button"
-                                            class="btn btn-outline-primary btn-sm editStatus"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#statusModal"
-                                            data-id="<?= (int)$r['id'] ?>"
-                                            data-status="<?= h($r['status']) ?>">
+                                    <!-- EDIT STATUS BUTTON -->
 
-                                        Status
+                                    <button type="button"
+                                            class="edit-status-btn editStatus"
+                                            data-id="<?= (int)$r['id'] ?>"
+                                            data-status="<?= h($r['status']) ?>"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#statusModal">
+
+                                        Edit Status
 
                                     </button>
+
+                                    <!-- ARCHIVE BUTTON -->
 
                                     <form method="POST"
                                           action="reports.php?tab=active"
@@ -919,9 +1072,11 @@ body {
                                         <input type="hidden" name="id"
                                                value="<?= (int)$r['id'] ?>">
 
-                                        <input type="hidden" name="tab" value="active">
+                                        <input type="hidden" name="tab"
+                                               value="active">
 
-                                        <button type="submit" name="action"
+                                        <button type="submit"
+                                                name="action"
                                                 value="archive"
                                                 class="btn btn-outline-danger btn-sm">
 
@@ -933,6 +1088,8 @@ body {
 
                                 <?php else: ?>
 
+                                    <!-- RESTORE AND DELETE BUTTONS -->
+
                                     <form method="POST"
                                           action="reports.php?tab=archive"
                                           class="d-flex flex-wrap gap-1">
@@ -943,7 +1100,11 @@ body {
                                         <input type="hidden" name="id"
                                                value="<?= (int)$r['id'] ?>">
 
-                                        <button type="submit" name="action"
+                                        <input type="hidden" name="tab"
+                                               value="archive">
+
+                                        <button type="submit"
+                                                name="action"
                                                 value="restore"
                                                 class="btn btn-success btn-sm">
 
@@ -951,7 +1112,8 @@ body {
 
                                         </button>
 
-                                        <button type="submit" name="action"
+                                        <button type="submit"
+                                                name="action"
                                                 value="delete"
                                                 class="btn btn-danger btn-sm"
                                                 onclick="return confirm('Permanently delete this report? This cannot be undone.');">
@@ -986,6 +1148,7 @@ body {
 
 
 <!-- VIEW REPORT MODAL -->
+
 <div class="modal fade" id="viewModal" tabindex="-1">
 
     <div class="modal-dialog modal-dialog-centered">
@@ -994,7 +1157,7 @@ body {
 
             <div class="modal-header">
 
-                <h5 class="modal-title text-success fw-bold">
+                <h5 class="modal-title fw-bold">
                     Report Details
                 </h5>
 
@@ -1006,10 +1169,15 @@ body {
             <div class="modal-body">
 
                 <p><strong>Report ID:</strong> <span id="vId"></span></p>
+
                 <p><strong>Report Type:</strong> <span id="vType"></span></p>
+
                 <p><strong>Related To:</strong> <span id="vRelated"></span></p>
+
                 <p><strong>Date:</strong> <span id="vDate"></span></p>
+
                 <p><strong>Location:</strong> <span id="vLocation"></span></p>
+
                 <p><strong>Status:</strong> <span id="vStatus"></span></p>
 
                 <hr>
@@ -1039,24 +1207,32 @@ body {
 
 
 <!-- EDIT STATUS MODAL -->
+
 <div class="modal fade" id="statusModal" tabindex="-1">
 
     <div class="modal-dialog modal-dialog-centered modal-sm">
 
-        <form method="POST" action="reports.php?tab=active"
-              class="modal-content">
+        <form method="POST"
+              action="reports.php?tab=active"
+              class="modal-content"
+              id="editStatusForm">
 
             <input type="hidden" name="csrf_token"
                    value="<?= h($_SESSION['reports_csrf']) ?>">
 
-            <input type="hidden" name="action" value="update_status">
+            <input type="hidden" name="action"
+                   value="update_status">
 
-            <input type="hidden" name="id" id="statusId">
+            <input type="hidden" name="tab"
+                   value="active">
+
+            <input type="hidden" name="id"
+                   id="statusId">
 
             <div class="modal-header">
 
-                <h5 class="modal-title text-success fw-bold">
-                    Update Report Status
+                <h5 class="modal-title fw-bold">
+                    Edit Report Status
                 </h5>
 
                 <button type="button" class="btn-close"
@@ -1066,18 +1242,22 @@ body {
 
             <div class="modal-body">
 
-                <label class="form-label">Select Status</label>
+                <p class="small text-secondary mb-3">
+                    Select the new status for this report.
+                </p>
 
-                <select name="status" id="statusSelect"
-                        class="form-select" required>
+                <label class="form-label">
+                    Report Status
+                </label>
 
-                    <?php foreach ($statuses as $s): ?>
+                <select name="status"
+                        id="statusSelect"
+                        class="form-select"
+                        required>
 
-                        <option value="<?= h($s) ?>">
-                            <?= h($s) ?>
-                        </option>
-
-                    <?php endforeach; ?>
+                    <option value="Open">Open</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Resolved">Resolved</option>
 
                 </select>
 
@@ -1091,7 +1271,8 @@ body {
                     Cancel
                 </button>
 
-                <button type="submit" class="btn btn-success btn-sm">
+                <button type="submit"
+                        class="btn btn-success btn-sm">
                     Save Changes
                 </button>
 
@@ -1110,7 +1291,8 @@ body {
 
 <script>
 
-/* SHOW RESIDENT OR CARETAKER */
+/* SHOW RESIDENT OR CARETAKER FIELDS */
+
 const relatedSelect = document.getElementById('related_to');
 
 if (relatedSelect) {
@@ -1145,14 +1327,15 @@ if (relatedSelect) {
 
 
 /* VIEW REPORT */
+
 document.querySelectorAll('.viewReport').forEach(button => {
 
     button.addEventListener('click', function () {
 
         const d = this.dataset;
 
-        document.getElementById('vId').textContent = 'INC-' +
-            String(d.id).padStart(3, '0');
+        document.getElementById('vId').textContent =
+            'INC-' + String(d.id).padStart(3, '0');
 
         document.getElementById('vType').textContent = d.type;
         document.getElementById('vRelated').textContent = d.related;
@@ -1166,17 +1349,35 @@ document.querySelectorAll('.viewReport').forEach(button => {
 });
 
 
-/* EDIT STATUS */
+/* EDIT REPORT STATUS */
+
 document.querySelectorAll('.editStatus').forEach(button => {
 
     button.addEventListener('click', function () {
 
-        document.getElementById('statusId').value = this.dataset.id;
+        const reportId = this.getAttribute('data-id');
+        const currentStatus = this.getAttribute('data-status');
 
-        document.getElementById('statusSelect').value =
-            this.dataset.status;
+        document.getElementById('statusId').value = reportId;
+
+        document.getElementById('statusSelect').value = currentStatus;
 
     });
+
+});
+
+
+/* PREVENT EMPTY REPORT ID */
+
+document.getElementById('editStatusForm')?.addEventListener('submit', function (event) {
+
+    const reportId = document.getElementById('statusId').value;
+    const status = document.getElementById('statusSelect').value;
+
+    if (!reportId || !status) {
+        event.preventDefault();
+        alert('Please select a valid report and status.');
+    }
 
 });
 
