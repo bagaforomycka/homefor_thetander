@@ -503,7 +503,7 @@ $csrf = $_SESSION['care_csrf'];
         <p class="page-sub"><?= h($pageSub) ?></p>
     </div>
     <div class="head-actions">
-        <?php if ($view === 'list'): ?><a class="btn-g" href="<?= h($pageFile) ?>?view=new">+ Add Report</a><?php endif; ?>
+        
         <button type="button" class="btn-g-outline" onclick="window.print()">Print</button>
     </div>
 </div>
@@ -628,7 +628,7 @@ $csrf = $_SESSION['care_csrf'];
             <h2 class="card-title"><?= $showArchived ? 'Archived Reports' : 'Active Reports' ?></h2>
             <p class="card-count"><?= count($rows) ?> report(s) found.</p>
         </div>
-        <a class="btn-g" href="<?= h($pageFile) ?>?view=new">+ Add Report</a>
+      
     </div>
     <form method="get" action="<?= h($pageFile) ?>" id="filterForm">
         <input type="hidden" name="view" value="list">

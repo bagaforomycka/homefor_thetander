@@ -219,7 +219,7 @@ $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <p>View and manage internal communication and system alerts.</p>
         </div>
         <div class="d-flex gap-2">
-            <a href="dashboard.php" class="btn btn-outline-success">← Back to Dashboard</a>
+           
             <a href="compose_message.php" class="btn btn-success">+ New Message</a>
         </div>
     </div>
