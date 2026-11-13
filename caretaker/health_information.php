@@ -380,6 +380,7 @@ try {
             color: #17683a; font-size: 28px; font-weight: 700; margin: 0;
             display: flex; align-items: center; gap: 12px;
         }
+        .residents-header .header-desc { color: #5f6f66; font-size: 16px; margin: 8px 0 0; }
 
         .residents-search-panel {
             background: #f5faf6; border: 1px solid #e3eee6; border-radius: 14px;
@@ -431,7 +432,8 @@ try {
 <div class="main-content">
 
     <div class="residents-header">
-        <h1><i class="bi bi-heart-pulse"></i> Health Information</h1>
+        <h1>Health Information</h1>
+        <p class="header-desc">View and update the health records of the residents assigned to your care.</p>
     </div>
 
     <?php if ($success === 'note_added'): ?>
@@ -470,7 +472,7 @@ try {
     </div>
 
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2 px-1">
-        <h2 class="h5 mb-0 text-success fw-bold">List of Residents</h2>
+        <h2 class="h5 mb-0 fw-bold" style="color: #17683a;">List of Residents</h2>
     </div>
 
     <?php if (empty($assignedResidents)): ?>
@@ -552,7 +554,7 @@ try {
 
                 <div class="action-row">
                     <button type="button" class="btn btn-add-notes" data-bs-toggle="modal" data-bs-target="#recordModal<?= $residentPk ?>">Record Observation/Report Concern</button>
-                    <button type="button" class="btn btn-outline-success fw-bold" data-bs-toggle="modal" data-bs-target="#editModal<?= $residentPk ?>"><i class="bi bi-pencil-square"></i> Edit</button>
+                    <button type="button" class="btn btn-outline-success fw-bold" data-bs-toggle="modal" data-bs-target="#editModal<?= $residentPk ?>">Edit</button>
                     <button type="button" class="alerts-link" data-bs-toggle="modal" data-bs-target="#alertsModal<?= $residentPk ?>"><i class="bi bi-check-lg"></i> View Health Alerts<?= $concernCount ? ' (' . $concernCount . ')' : '' ?></button>
                 </div>
             </div>

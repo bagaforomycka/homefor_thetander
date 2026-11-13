@@ -484,7 +484,7 @@ try {
 <div class="main-content">
 <div class="residents-header d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
-        <h1><i class="bi bi-clipboard2-check"></i> CareTaker Report</h1>
+        <h1>CareTaker Report</h1>
         <p>Real-time synchronization with resident health logs and care records.</p>
     </div>
 </div>
@@ -510,8 +510,8 @@ try {
 </div>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2 px-1">
-    <h2 class="h5 mb-0 text-success fw-bold">Resident Reports</h2>
-    <span class="text-secondary fw-semibold"><?= count($assignedResidents) ?> resident(s) found</span>
+    <h2 class="h5 mb-0 fw-bold" style="color: #17683a;">Resident Reports</h2>
+    <span class="fw-semibold" style="color: #17683a;"><?= count($assignedResidents) ?> resident(s) found</span>
 </div>
 
 <?php if (empty($assignedResidents)): ?>
@@ -611,7 +611,6 @@ try {
 
             <div class="notes-card-header">
                 <div class="notes-title-wrap">
-                    <i class="bi bi-clipboard2-plus"></i>
                     <h2>Additional Notes</h2>
                 </div>
                 <button type="button" class="btn btn-add-notes" data-bs-toggle="modal" data-bs-target="#addNotesModal<?= $residentPk ?>">
