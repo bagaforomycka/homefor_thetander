@@ -53,20 +53,28 @@ if (!is_dir($upload_dir)) {
 
 /* Ensure profile_picture exists in users */
 
-$columns = [];
+try {
 
-foreach ($pdo->query('SHOW COLUMNS FROM users') as $column) {
-    $columns[] = $column['Field'];
-}
+    $columns = [];
 
-if (!in_array('profile_picture', $columns, true)) {
-    try {
-        $pdo->exec(
-            'ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL'
-        );
-    } catch (Throwable $e) {
-        $error_msg = 'Unable to prepare the profile picture database column.';
+    $columnQuery = $pdo->query("SHOW COLUMNS FROM users");
+
+    while ($column = $columnQuery->fetch(PDO::FETCH_ASSOC)) {
+        $columns[] = $column['Field'];
     }
+
+    if (!in_array('profile_picture', $columns, true)) {
+        $pdo->exec(
+            "ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL"
+        );
+    }
+
+} catch (Throwable $e) {
+
+    error_log('Profile picture database check: ' . $e->getMessage());
+
+    $error_msg = 'Unable to prepare the profile picture database column.';
+
 }
 
 /* Get the logged-in caretaker's information */
@@ -82,8 +90,8 @@ function getCaretakerProfile(PDO $pdo, int $user_id): array
             u.role,
             u.status AS user_status,
             u.profile_picture,
-            c.employee_id,
-            c.full_name AS caretaker_full_name,
+           c.id AS caretaker_id,
+c.full_name AS caretaker_full_name,
             c.contact,
             c.address,
             c.position,
@@ -340,8 +348,8 @@ $user_name = $user['user_full_name'] ?: 'Caretaker';
 $pic_file = $user['profile_picture'] ?? '';
 $position = $user['position'] ?: 'Caretaker';
 $shift = $user['shift'] ?: 'Not set';
-$employee_id = $user['employee_id'] ?? '';
-
+// Automatically retrieve the caretaker ID from the database
+$caretaker_id = (int) ($user['caretaker_id'] ?? 0);
 $val = static function (string $field) use ($user, $open_edit): string {
     if ($open_edit && isset($_POST[$field])) {
         return (string) $_POST[$field];
@@ -501,11 +509,17 @@ require_once __DIR__ . '/../includes/sidebar.php';
                     <?= show_val($user['user_full_name']) ?>
                 </div>
             </div>
+            <div class="col-md-6 pf-item">
+    <div class="pf-label">Caretaker ID</div>
+    <div class="pf-value">
+        <?= $caretaker_id > 0 ? 'CT-' . str_pad((string)$caretaker_id, 4, '0', STR_PAD_LEFT) : 'Not assigned' ?>
+    </div>
+</div>
 
             <div class="col-md-6 pf-item">
-                <div class="pf-label">Employee ID</div>
+                <div class="pf-label">Caretaker ID</div>
                 <div class="pf-value">
-                    <?= show_val($employee_id) ?>
+                    <?= show_val($caretaker_id) ?>
                 </div>
             </div>
 
@@ -611,6 +625,13 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 <div class="form-text">
                     JPG, PNG or WEBP. Maximum size: 2 MB.
                 </div>
+                <div class="col-md-4">
+    <label class="form-label fw-semibold">Caretaker ID</label>
+    <input type="text"
+           class="form-control pf-fixed"
+           readonly
+           value="<?= $caretaker_id > 0 ? 'CT-' . str_pad((string)$caretaker_id, 4, '0', STR_PAD_LEFT) : 'Not assigned' ?>">
+</div>
 
             </div>
 
@@ -657,11 +678,11 @@ require_once __DIR__ . '/../includes/sidebar.php';
         <div class="row g-3 mb-4">
 
             <div class="col-md-4">
-                <label class="form-label fw-semibold">Employee ID</label>
+                <label class="form-label fw-semibold">Caretaker ID</label>
                 <input type="text"
                        class="form-control pf-fixed"
                        readonly
-                       value="<?= h($employee_id) ?>">
+                       value="<?= h($caretaker_id) ?>">
             </div>
 
             <div class="col-md-4">

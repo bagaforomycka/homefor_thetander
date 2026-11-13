@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -20,6 +19,11 @@ function h($value): string
 }
 
 /*
+ * Built-in placeholder avatar (inline SVG), so no image file is needed.
+ */
+const DEFAULT_AVATAR = "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 fill=%27%23e0eee4%27/%3E%3Ccircle cx=%2750%27 cy=%2738%27 r=%2718%27 fill=%27%2399b8a5%27/%3E%3Cpath d=%27M14 100c0-22 16-36 36-36s36 14 36 36z%27 fill=%27%2399b8a5%27/%3E%3C/svg%3E";
+
+/*
  * Resident profile picture path.
  * Files are stored in admin/uploads/residentspic/.
  */
@@ -28,7 +32,7 @@ function residentPicture($picture): string
     $picture = trim((string)($picture ?? ''));
 
     if ($picture === '') {
-        return '../images/default-profile.png';
+        return DEFAULT_AVATAR;
     }
 
     $filename = basename(str_replace('\\', '/', $picture));
@@ -36,7 +40,7 @@ function residentPicture($picture): string
     $physicalPath = __DIR__ . '/uploads/residentspic/' . $filename;
 
     if (!is_file($physicalPath)) {
-        return '../images/default-profile.png';
+        return DEFAULT_AVATAR;
     }
 
     return 'uploads/residentspic/' . rawurlencode($filename);
@@ -267,18 +271,38 @@ if (
 
     } else {
         try {
+            $pdo->beginTransaction();
+
+            // Remember which room the resident is in before archiving.
+            $roomStmt = $pdo->prepare("
+                SELECT room_number
+                FROM residents
+                WHERE id = :id
+                LIMIT 1
+                FOR UPDATE
+            ");
+            $roomStmt->execute(['id' => $residentId]);
+            $roomValue = $roomStmt->fetchColumn();
+            $roomNumber = ($roomValue === false || $roomValue === null)
+                ? ''
+                : trim((string)$roomValue);
+
+            // The room_number is cleared so the archived resident no longer
+            // counts as an occupant of that room.
             if ($hasArchivedAt) {
                 $stmt = $pdo->prepare("
                     UPDATE residents
                     SET archived_at = NOW(),
-                        status = 'archived'
+                        status = 'archived',
+                        room_number = NULL
                     WHERE id = :id
                       AND archived_at IS NULL
                 ");
             } else {
                 $stmt = $pdo->prepare("
                     UPDATE residents
-                    SET status = 'archived'
+                    SET status = 'archived',
+                        room_number = NULL
                     WHERE id = :id
                       AND (status IS NULL OR status <> 'archived')
                 ");
@@ -287,13 +311,43 @@ if (
             $stmt->execute(['id' => $residentId]);
 
             if ($stmt->rowCount() > 0) {
+
+                // Make the room Available again if nobody else is in it.
+                if ($roomNumber !== '') {
+                    $freeRoom = $pdo->prepare("
+                        UPDATE rooms
+                        SET status = 'Available'
+                        WHERE room_number = :room
+                          AND status = 'Occupied'
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM residents
+                              WHERE room_number = :room_check
+                                AND (status IS NULL OR status <> 'archived')
+                          )
+                    ");
+
+                    $freeRoom->execute([
+                        'room' => $roomNumber,
+                        'room_check' => $roomNumber
+                    ]);
+                }
+
+                $pdo->commit();
+
                 header('Location: residents.php?success=deleted');
                 exit;
             }
 
+            $pdo->rollBack();
+
             $error = 'Resident not found or already archived.';
 
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
             error_log('Resident archive error: ' . $e->getMessage());
             $error = 'Unable to archive this resident. Please try again.';
         }
@@ -915,7 +969,8 @@ if (!$error) {
                                 src="<?= h($profilePicture) ?>"
                                 alt="<?= h($fullName) ?> profile picture"
                                 class="resident-profile-picture"
-                                onerror="this.onerror=null;this.src='../images/default-profile.png';"
+                                data-fallback="<?= h(DEFAULT_AVATAR) ?>"
+                                onerror="this.onerror=null;this.src=this.dataset.fallback;"
                             >
 
                             <div class="resident-profile-info">

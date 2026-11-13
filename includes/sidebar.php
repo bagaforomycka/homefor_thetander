@@ -1074,18 +1074,25 @@ if (!function_exists('sidebarLink')) {
 
             <?php
             sidebarLink(
-                '/homefor_thetander/caretaker/profile.php',
-                'My Profile',
-                'profile.php',
-                $currentPage
-            );
+    '/homefor_thetander/caretaker/profile.php',
+    'My Profile',
+    'profile.php',
+    $currentPage
+);
 
-            sidebarLink(
-                '/homefor_thetander/caretaker/archive.php',
-                'Archive & Restore',
-                'archive.php',
-                $currentPage
-            );
+sidebarLink(
+    '/homefor_thetander/caretaker/settings.php',
+    'Settings',
+    'settings.php',
+    $currentPage
+);
+
+sidebarLink(
+    '/homefor_thetander/caretaker/archive.php',
+    'Archive & Restore',
+    'archive.php',
+    $currentPage
+);
             ?>
 
         <?php endif; ?>

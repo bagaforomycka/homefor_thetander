@@ -418,39 +418,7 @@ try {
             background: #fbe9eb;
         }
 
-        .btn-schedule-view {
-            color: #198754;
-            background: #fff;
-            border: 1px solid #198754;
-        }
-
-        .btn-schedule-view:hover {
-            color: #fff;
-            background: #198754;
-        }
-
-        .btn-schedule-edit {
-            color: #0d6efd;
-            background: #fff;
-            border: 1px solid #0d6efd;
-        }
-
-        .btn-schedule-edit:hover {
-            color: #fff;
-            background: #0d6efd;
-        }
-
-        .btn-schedule-delete {
-            color: #dc3545;
-            background: #fff;
-            border: 1px solid #dc3545;
-        }
-
-        .btn-schedule-delete:hover {
-            color: #fff;
-            background: #dc3545;
-        }
-
+        /* ACTION BUTTONS */
         .schedule-actions {
             display: flex;
             justify-content: flex-end;
@@ -459,21 +427,72 @@ try {
             margin-top: 14px;
         }
 
+        .schedule-actions form {
+            margin: 0;
+        }
+
         .schedule-actions .btn {
             font-size: 13px;
-            padding: 5px 10px;
+            font-weight: 600;
+            padding: 5px 14px;
+            border-radius: 6px;
+            box-shadow: none !important;
         }
 
-        .btn-schedule-done {
-            background: #198754;
-            border: 1px solid #198754;
-            color: #ffffff;
+        /* View: green border */
+        .schedule-actions .btn.btn-schedule-view {
+            color: #17683a !important;
+            background-color: #ffffff !important;
+            border: 2px solid #198754 !important;
         }
 
-        .btn-schedule-done:hover {
-            background: #157347;
-            border-color: #146c43;
-            color: #ffffff;
+        .schedule-actions .btn.btn-schedule-view:hover,
+        .schedule-actions .btn.btn-schedule-view:focus {
+            color: #ffffff !important;
+            background-color: #198754 !important;
+            border: 2px solid #198754 !important;
+        }
+
+        /* Edit: yellow border */
+        .schedule-actions .btn.btn-schedule-edit {
+            color: #8a6d00 !important;
+            background-color: #ffffff !important;
+            border: 2px solid #e0b400 !important;
+        }
+
+        .schedule-actions .btn.btn-schedule-edit:hover,
+        .schedule-actions .btn.btn-schedule-edit:focus {
+            color: #303030 !important;
+            background-color: #ffdf70 !important;
+            border: 2px solid #d6a900 !important;
+        }
+
+        /* Delete: red border */
+        .schedule-actions .btn.btn-schedule-delete {
+            color: #b02a37 !important;
+            background-color: #ffffff !important;
+            border: 2px solid #dc3545 !important;
+        }
+
+        .schedule-actions .btn.btn-schedule-delete:hover,
+        .schedule-actions .btn.btn-schedule-delete:focus {
+            color: #ffffff !important;
+            background-color: #dc3545 !important;
+            border: 2px solid #dc3545 !important;
+        }
+
+        /* Mark as Done: solid green */
+        .schedule-actions .btn.btn-schedule-done {
+            background-color: #198754 !important;
+            border: 2px solid #198754 !important;
+            color: #ffffff !important;
+        }
+
+        .schedule-actions .btn.btn-schedule-done:hover,
+        .schedule-actions .btn.btn-schedule-done:focus {
+            background-color: #157347 !important;
+            border: 2px solid #146c43 !important;
+            color: #ffffff !important;
         }
 
         @media (max-width: 576px) {
@@ -499,8 +518,6 @@ try {
     </div>
 
     <div class="d-flex gap-2 flex-wrap">
-       
-
         <a href="add_schedule.php" class="btn btn-success">
             + Add Schedule
         </a>
@@ -515,7 +532,7 @@ try {
     <div class="alert alert-success">Schedule marked as done.</div>
 <?php elseif ($success === 'archived'): ?>
     <div class="alert alert-success">
-        Schedule archived successfully. You can restore it from Archive & Restore in the sidebar.
+        Schedule archived successfully. You can restore it from Archive &amp; Restore in the sidebar.
     </div>
 <?php elseif ($success === 'notfound'): ?>
     <div class="alert alert-warning">
@@ -614,14 +631,14 @@ try {
 
                         <div class="schedule-meta">
                             Type: <?= h($item['schedule_type'] ?? '') ?>
-                             | 
+                            &nbsp;|&nbsp;
                             Date: <?= h($item['schedule_date'] ?? '') ?>
-                             | 
+                            &nbsp;|&nbsp;
                             Time:
                             <?= $startTime !== false ? h(date('g:i A', $startTime)) : 'Not specified' ?>
 
                             <?php if ($endTime !== false): ?>
-                                – <?= h(date('g:i A', $endTime)) ?>
+                                &ndash; <?= h(date('g:i A', $endTime)) ?>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -680,8 +697,7 @@ try {
 
                     <?php if ($itemStatus === 'Scheduled'): ?>
                         <form method="POST"
-                              action="schedules.php"
-                              class="d-inline">
+                              action="schedules.php">
                             <input type="hidden" name="action" value="complete">
                             <input type="hidden"
                                    name="schedule_id"
@@ -704,8 +720,7 @@ try {
                     <?php if ($isAdmin): ?>
                         <form method="POST"
                               action="schedules.php"
-                              class="d-inline"
-                              onsubmit="return confirm('Delete this schedule from the active list? It will be moved to Archive & Restore and can be restored later.');">
+                              onsubmit="return confirm('Delete this schedule from the active list? It will be moved to Archive &amp; Restore and can be restored later.');">
 
                             <input type="hidden" name="action" value="delete">
 

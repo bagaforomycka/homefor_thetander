@@ -32,33 +32,109 @@ try {
 $error = '';
 $success = '';
 
+/* Generate the next room number */
+function getNextRoomNumber(PDO $pdo): string
+{
+    $stmt = $pdo->query("SELECT room_number FROM rooms");
+    $roomNumbers = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $highestNumber = 0;
+
+    foreach ($roomNumbers as $number) {
+        if (preg_match('/^Room\s+(\d+)$/i', trim($number), $matches)) {
+            $highestNumber = max($highestNumber, (int)$matches[1]);
+        }
+    }
+
+    return 'Room ' . str_pad($highestNumber + 1, 3, '0', STR_PAD_LEFT);
+}
+
+/*
+ * Keep room status in line with the residents actually living in each room.
+ *  - Occupied  -> Available when no active (non-archived) resident is in it.
+ *  - Available -> Occupied  when an active resident is in it.
+ * Rooms under Maintenance are never changed.
+ */
+function syncAllRoomStatuses(PDO $pdo, bool $hasArchivedAt): void
+{
+    $roomFilter = $hasArchivedAt ? ' AND rm.archived_at IS NULL' : '';
+
+    $activeResidentInRoom = "
+        SELECT 1
+        FROM residents r
+        WHERE r.room_number = rm.room_number
+          AND (r.status IS NULL OR r.status <> 'archived')
+    ";
+
+    try {
+        $pdo->exec("
+            UPDATE rooms rm
+            SET rm.status = 'Available'
+            WHERE rm.status = 'Occupied'
+              $roomFilter
+              AND NOT EXISTS ($activeResidentInRoom)
+        ");
+
+        $pdo->exec("
+            UPDATE rooms rm
+            SET rm.status = 'Occupied'
+            WHERE rm.status = 'Available'
+              $roomFilter
+              AND EXISTS ($activeResidentInRoom)
+        ");
+    } catch (PDOException $ex) {
+        error_log('Room status sync error: ' . $ex->getMessage());
+    }
+}
+
+/* Preview the next room number */
+$nextRoomNumber = getNextRoomNumber($pdo);
+
 /* Add Room Request */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_room'])) {
-    $roomNumber = trim($_POST['room_number'] ?? '');
-    $roomType   = trim($_POST['room_type'] ?? 'Standard');
-    $capacity   = filter_input(INPUT_POST, 'capacity', FILTER_VALIDATE_INT);
-    $status     = trim($_POST['status'] ?? 'Available');
+    $roomType = trim($_POST['room_type'] ?? 'Standard');
+    $capacity = filter_input(INPUT_POST, 'capacity', FILTER_VALIDATE_INT);
+    $status = trim($_POST['status'] ?? 'Available');
 
-    if ($roomNumber === '' || !$capacity || $capacity < 1) {
-        $error = 'Please enter a valid room number and capacity.';
+    // Occupied is set automatically when a resident is assigned to the room.
+    if (!in_array($status, ['Available', 'Maintenance'], true)) {
+        $status = 'Available';
+    }
+
+    if (!$capacity || $capacity < 1) {
+        $error = 'Please enter a valid room capacity.';
     } else {
         try {
-            /* Check if room already exists */
-            $checkStmt = $pdo->prepare("SELECT id FROM rooms WHERE room_number = ?");
-            $checkStmt->execute([$roomNumber]);
-            if ($checkStmt->fetch()) {
-                $error = 'Room number already exists.';
-            } else {
-                $insertSql = "INSERT INTO rooms (room_number, room_type, capacity, status) VALUES (?, ?, ?, ?)";
-                $insertStmt = $pdo->prepare($insertSql);
-                $insertStmt->execute([$roomNumber, $roomType, $capacity, $status]);
+            $pdo->beginTransaction();
 
-                header("Location: rooms.php?success=added");
-                exit;
-            }
+            // Generate the room number again when saving
+            $roomNumber = getNextRoomNumber($pdo);
+
+            $insertSql = "
+                INSERT INTO rooms (room_number, room_type, capacity, status)
+                VALUES (?, ?, ?, ?)
+            ";
+
+            $insertStmt = $pdo->prepare($insertSql);
+            $insertStmt->execute([
+                $roomNumber,
+                $roomType,
+                $capacity,
+                $status
+            ]);
+
+            $pdo->commit();
+
+            header("Location: rooms.php?success=added");
+            exit;
+
         } catch (PDOException $ex) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
             error_log($ex->getMessage());
-            $error = 'Failed to add room. Please check database configuration.';
+            $error = 'Failed to add room. Please try again.';
         }
     }
 }
@@ -66,6 +142,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_room'])) {
 if (isset($_GET['success']) && $_GET['success'] === 'added') {
     $success = 'Room added successfully!';
 }
+
+/* Free or mark rooms based on the current residents before listing them */
+syncAllRoomStatuses($pdo, $hasArchivedAt);
 
 /* Search and Filters */
 $search = trim($_GET['search'] ?? '');
@@ -311,10 +390,13 @@ try {
     <form method="POST" action="rooms.php">
         <input type="hidden" name="add_room" value="1">
         <div class="row g-2 mb-3">
-            <div class="col-md-6">
-                <label for="room_number" class="form-label">Room Number *</label>
-                <input type="text" id="room_number" name="room_number" class="form-control" placeholder="e.g. 101, A-1" required>
-            </div>
+           <div class="col-md-6">
+    <label class="form-label">Room Number (Auto-generated)</label>
+    <input type="text"
+           class="form-control"
+           value="<?= e($nextRoomNumber) ?>"
+           readonly>
+</div>
             <div class="col-md-6">
                 <label for="room_type" class="form-label">Room Type</label>
                 <select id="room_type" name="room_type" class="form-select">
@@ -332,9 +414,12 @@ try {
                 <label for="status" class="form-label">Status</label>
                 <select id="status" name="status" class="form-select">
                     <option value="Available">Available</option>
-                    <option value="Occupied">Occupied</option>
                     <option value="Maintenance">Maintenance</option>
                 </select>
+                <div class="form-text">
+                    A room becomes Occupied automatically when a resident is
+                    assigned, and Available again when that resident is archived.
+                </div>
             </div>
         </div>
         <div class="text-end">
