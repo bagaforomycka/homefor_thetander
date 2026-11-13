@@ -1,5 +1,5 @@
-
 <?php
+
 session_start();
 
 require_once __DIR__ . '/../config/db.php';
@@ -169,6 +169,7 @@ $scheduleNotice = [
     'notfound' => ['warning', 'That schedule was not found or was already updated.'],
     'invalid'  => ['warning', 'Please select a valid schedule.'],
 ][$_GET['schedule'] ?? ''] ?? null;
+
 ?>
 
 <!DOCTYPE html>
@@ -194,8 +195,7 @@ $scheduleNotice = [
             margin: 0;
             background: #eef1ee;
             font-family: Arial, sans-serif;
-            color: #dfeedf;
-            display: flex;
+            color: #303830;
             min-height: 100vh;
         }
 
@@ -204,134 +204,6 @@ $scheduleNotice = [
             max-width: 100%;
             min-width: 0;
             padding: 20px;
-            flex-grow: 1;
-            transition: margin-left 0.3s ease;
-        }
-
-        .sidebar-toggle-btn {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 6px;
-            padding: 6px;
-            cursor: pointer;
-            display: inline-flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 4px;
-            width: 36px;
-            height: 36px;
-            margin: 12px 0;
-            transition: background 0.2s ease, border-color 0.2s ease;
-        }
-
-        .sidebar-toggle-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
-
-        .sidebar-toggle-btn .hamburger-line {
-            display: block;
-            width: 18px;
-            height: 2px;
-            background-color: #ffffff;
-            border-radius: 2px;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar-toggle-wrapper {
-            padding-left: 15px;
-            width: 100%;
-            display: flex;
-            justify-content: flex-start;
-        }
-
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 998;
-            display: none;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
-        }
-
-        .sidebar, #sidebar, .sidebar-container, aside {
-            width: 260px;
-            min-width: 260px;
-            transition: width 0.3s ease, transform 0.3s ease;
-            z-index: 999;
-            flex-shrink: 0;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        @media (min-width: 993px) {
-            body.sidebar-folded .sidebar,
-            body.sidebar-folded #sidebar,
-            body.sidebar-folded .sidebar-container,
-            body.sidebar-folded aside {
-                width: 70px;
-                min-width: 70px;
-            }
-
-            body.sidebar-folded .sidebar > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded #sidebar > *:not(.sidebar-toggle-wrapper),
-            body.sidebar-folded aside > *:not(.sidebar-toggle-wrapper) {
-                display: none !important;
-            }
-
-            body.sidebar-folded .sidebar-toggle-wrapper {
-                display: flex !important;
-                justify-content: center !important;
-                padding-left: 0 !important;
-                width: 100% !important;
-                margin-top: 12px !important;
-            }
-        }
-
-        @media (max-width: 992px) {
-            .sidebar, #sidebar, .sidebar-container, aside {
-                position: fixed;
-                top: 0;
-                left: 0;
-                height: 100%;
-                transform: translateX(-100%);
-                width: 260px !important;
-            }
-
-            body.sidebar-open .sidebar,
-            body.sidebar-open #sidebar,
-            body.sidebar-open .sidebar-container,
-            body.sidebar-open aside {
-                transform: translateX(0);
-            }
-        }
-
-        .sidebar-logo {
-            display: block;
-            padding: 10px 4px 6px;
-            text-align: center;
-        }
-
-        .sidebar-logo a {
-            display: block;
-        }
-
-        .sidebar-logo img {
-            display: block;
-            width: 100%;
-            max-width: 300px;
-            height: auto;
-            margin: 0 auto;
-            transform: scale(1.1);
-            transition: transform 0.3s ease, opacity 0.3s ease;
         }
 
         .page-header {
@@ -711,6 +583,8 @@ $scheduleNotice = [
             line-height: 1.3;
         }
 
+        /* TABLET VIEW */
+
         @media (max-width: 1100px) {
             .quick-actions {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -718,19 +592,37 @@ $scheduleNotice = [
         }
 
         @media (max-width: 992px) {
+            .main-content {
+                padding: 16px;
+            }
+
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
         }
 
+        /* MOBILE VIEW */
+
         @media (max-width: 576px) {
+            .main-content {
+                padding: 12px;
+            }
+
             .page-header h2 {
                 font-size: 22px;
+            }
+
+            .page-header p {
+                font-size: 12px;
             }
 
             .stat-card {
                 min-height: 102px;
                 padding: 14px;
+            }
+
+            .stat-card h6 {
+                font-size: 11px;
             }
 
             .stat-card h3 {
@@ -742,11 +634,47 @@ $scheduleNotice = [
             }
 
             .quick-actions {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
             }
 
             .quick-action {
                 min-height: 58px;
+                padding: 9px;
+                gap: 8px;
+            }
+
+            .quick-action-icon {
+                flex-basis: 28px;
+                width: 28px;
+                height: 28px;
+                font-size: 16px;
+            }
+
+            .quick-action-text strong {
+                font-size: 11px;
+            }
+
+            .quick-action-text small {
+                font-size: 9px;
+            }
+
+            .schedule-item-actions {
+                width: 100%;
+                flex-wrap: wrap;
+            }
+
+            .schedule-item-actions form {
+                flex: 1 1 auto;
+            }
+
+            .schedule-item-actions button {
+                width: 100%;
+            }
+
+            .widget-header {
+                align-items: flex-start;
+                flex-wrap: wrap;
             }
         }
 
@@ -761,8 +689,6 @@ $scheduleNotice = [
 </head>
 
 <body>
-
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
@@ -803,7 +729,6 @@ $scheduleNotice = [
             <div class="stat-card">
                 <?= notificationDot($newCaretakers, 'caretakers') ?>
 
-                <!-- CORRECTED CARETAKERS LINK -->
                 <a href="caretakers.php" class="stat-link">
                     <h6>Total Caretakers</h6>
                     <h3><?= $totalCaretakers ?></h3>
@@ -827,6 +752,7 @@ $scheduleNotice = [
     <!-- ADMISSION TRACKER -->
 
     <section class="widget graph-widget">
+
         <div class="widget-header">
             <h5>Patient Admission Trends</h5>
             <a href="admission_tracker.php">View Graph →</a>
@@ -839,6 +765,7 @@ $scheduleNotice = [
         <a href="admission_tracker.php" class="graph-link">
             Open Admission Tracker
         </a>
+
     </section>
 
     <!-- ANNOUNCEMENTS AND SCHEDULES -->
@@ -846,6 +773,7 @@ $scheduleNotice = [
     <div class="dashboard-grid">
 
         <section class="widget">
+
             <div class="widget-header">
                 <h5>
                     Announcements
@@ -870,6 +798,7 @@ $scheduleNotice = [
                         class="announcement-item"
                         data-announcement-key="<?= h($announcementKey) ?>"
                     >
+
                         <div class="announcement-content">
                             <strong><?= h($announcement['title']) ?></strong>
 
@@ -892,6 +821,7 @@ $scheduleNotice = [
                         </button>
 
                         <span class="read-label" hidden>Read</span>
+
                     </div>
 
                 <?php endforeach; ?>
@@ -903,9 +833,11 @@ $scheduleNotice = [
                 </p>
 
             <?php endif; ?>
+
         </section>
 
         <section class="widget">
+
             <div class="widget-header">
                 <h5>
                     Scheduled Tasks
@@ -916,9 +848,11 @@ $scheduleNotice = [
             </div>
 
             <?php if ($scheduleNotice): ?>
+
                 <div class="alert alert-<?= h($scheduleNotice[0]) ?> py-2 px-3 mb-2" style="font-size:12px;">
                     <?= h($scheduleNotice[1]) ?>
                 </div>
+
             <?php endif; ?>
 
             <?php if (!empty($dashboardSchedules)): ?>
@@ -937,7 +871,9 @@ $scheduleNotice = [
                     ?>
 
                     <div class="schedule-item">
+
                         <div class="schedule-info">
+
                             <strong><?= h($schedule['title']) ?></strong>
 
                             <small>
@@ -951,11 +887,13 @@ $scheduleNotice = [
 
                                 · <?= h($schedule['schedule_type'] ?? '') ?>
                             </small>
+
                         </div>
 
                         <div class="schedule-item-actions">
 
                             <form method="POST" action="schedules.php">
+
                                 <input type="hidden" name="action" value="complete">
                                 <input type="hidden" name="return" value="dashboard">
                                 <input type="hidden" name="schedule_id" value="<?= (int) $schedule['id'] ?>">
@@ -964,6 +902,7 @@ $scheduleNotice = [
                                 <button type="submit" class="schedule-btn schedule-btn-done">
                                     Mark as Done
                                 </button>
+
                             </form>
 
                             <?php if ($isAdmin): ?>
@@ -973,6 +912,7 @@ $scheduleNotice = [
                                     action="schedules.php"
                                     onsubmit="return confirm('Delete this schedule? It will be moved to Archive &amp; Restore and can be restored later.');"
                                 >
+
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="return" value="dashboard">
                                     <input type="hidden" name="schedule_id" value="<?= (int) $schedule['id'] ?>">
@@ -981,11 +921,13 @@ $scheduleNotice = [
                                     <button type="submit" class="schedule-btn schedule-btn-delete">
                                         Delete
                                     </button>
+
                                 </form>
 
                             <?php endif; ?>
 
                         </div>
+
                     </div>
 
                 <?php endforeach; ?>
@@ -997,6 +939,7 @@ $scheduleNotice = [
                 </p>
 
             <?php endif; ?>
+
         </section>
 
     </div>
@@ -1018,7 +961,6 @@ $scheduleNotice = [
                 </span>
             </a>
 
-            <!-- CORRECTED CARETAKERS LINK -->
             <a href="caretakers.php" class="quick-action">
                 <span class="quick-action-icon">+</span>
 
@@ -1065,113 +1007,17 @@ $scheduleNotice = [
             </a>
 
         </div>
+
     </section>
 
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- SIDEBAR TOGGLE -->
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-
-    var overlay = document.getElementById('sidebarOverlay');
-
-    var sidebar = document.querySelector(
-        '.sidebar, #sidebar, .sidebar-container, aside, nav'
-    );
-
-    if (!sidebar) {
-        return;
-    }
-
-    var oldTexts = [
-        'home for the aged',
-        'care management system'
-    ];
-
-    sidebar.querySelectorAll('*').forEach(function (el) {
-        if (
-            el.children.length === 0 &&
-            oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-        ) {
-            el.style.display = 'none';
-        }
-    });
-
-    if (!sidebar.querySelector('.sidebar-logo')) {
-
-        var logo = document.createElement('div');
-
-        logo.className = 'sidebar-logo';
-
-        logo.innerHTML =
-            '<a href="dashboard.php">' +
-            '<img src="../images/white1.png" ' +
-            'alt="Home for the Aged - Care, Comfort, Dignity">' +
-            '</a>';
-
-        sidebar.insertBefore(logo, sidebar.firstChild);
-    }
-
-    if (!sidebar.querySelector('#sidebarToggle')) {
-
-        var toggleWrapper = document.createElement('div');
-
-        toggleWrapper.className = 'sidebar-toggle-wrapper';
-
-        toggleWrapper.innerHTML = `
-            <button type="button" class="sidebar-toggle-btn" id="sidebarToggle" aria-label="Toggle Navigation Sidebar">
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-            </button>
-        `;
-
-        sidebar.insertBefore(toggleWrapper, sidebar.firstChild);
-    }
-
-    var toggleBtn = document.getElementById('sidebarToggle');
-
-    if (toggleBtn) {
-
-        toggleBtn.addEventListener('click', function () {
-
-            if (window.innerWidth <= 992) {
-
-                document.body.classList.toggle('sidebar-open');
-
-                if (overlay) {
-                    overlay.classList.toggle('active');
-                }
-
-            } else {
-
-                document.body.classList.toggle('sidebar-folded');
-
-            }
-
-        });
-    }
-
-    if (overlay) {
-
-        overlay.addEventListener('click', function () {
-
-            document.body.classList.remove('sidebar-open');
-
-            overlay.classList.remove('active');
-
-        });
-    }
-
-});
-</script>
-
 <!-- NOTIFICATIONS AND ANNOUNCEMENTS -->
 
 <script>
+
 document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll(
@@ -1179,19 +1025,15 @@ document.addEventListener('DOMContentLoaded', function () {
     ).forEach(function (dot) {
 
         const category = dot.dataset.notificationKey;
-
         const version = dot.dataset.notificationVersion;
 
         const storageKey = 'homeAgedRead_' + category;
-
         const dismissedVersion = category + ':' + version;
 
         try {
-
             if (localStorage.getItem(storageKey) === dismissedVersion) {
                 dot.remove();
             }
-
         } catch (error) {
         }
 
@@ -1228,13 +1070,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const key = 'homeAged_' + button.dataset.announcementKey;
 
         const item = button.closest('.announcement-item');
-
         const readLabel = item.querySelector('.read-label');
 
         function showAsRead() {
 
             button.hidden = true;
-
             readLabel.hidden = false;
 
             item.classList.add('announcement-read');
@@ -1242,11 +1082,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         try {
-
             if (localStorage.getItem(key) === 'read') {
                 showAsRead();
             }
-
         } catch (error) {
         }
 
@@ -1264,6 +1102,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
 });
+
 </script>
 
 </body>

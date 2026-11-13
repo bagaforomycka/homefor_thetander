@@ -1,3 +1,4 @@
+
 <?php
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -13,18 +14,14 @@ $currentRole = strtolower($_SESSION['role']);
 $sbScript    = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? '');
 $currentPage = basename($sbScript);
 
-/* admin/rooms/index.php and admin/schedules/index.php report "index.php":
-   use the folder name instead so the right menu item is highlighted. */
 if ($currentPage === 'index.php') {
     $currentPage = basename(dirname($sbScript)) . '.php';
 }
 
-/* "View Profile" goes to the profile page of the logged-in role */
 $sbProfileUrl = $currentRole === 'caretaker'
     ? '/homefor_thetander/caretaker/profile.php'
     : '/homefor_thetander/admin/profile.php';
 
-/* Profile info for the top-right account menu */
 require_once __DIR__ . '/../config/db.php';
 
 $sbUserName  = $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'User';
@@ -49,22 +46,19 @@ try {
         }
     }
 } catch (Throwable $sbErr) {
-    /* Column or table missing: fall back to initials */
+    // Fall back to initials if profile information is unavailable.
 }
 
 $sbInitials = '';
 foreach (array_slice(preg_split('/\s+/', trim((string) $sbUserName)), 0, 2) as $sbPart) {
     $sbInitials .= mb_strtoupper(mb_substr($sbPart, 0, 1));
 }
+
 if ($sbInitials === '') {
     $sbInitials = 'U';
 }
 
 if (!function_exists('sidebarLink')) {
-    /**
-     * $page may be one file name or a list of file names. A menu item stays
-     * highlighted on its own page and on the add / view / edit pages under it.
-     */
     function sidebarLink(
         string $href,
         string $label,
@@ -115,7 +109,6 @@ if (!function_exists('sidebarLink')) {
         body {
             margin: 0;
             background:
-               
                 url('/homefor_thetander/assets/images/aged-care-background.jpg?v=<?= (int) @filemtime(__DIR__ . '/../assets/images/aged-care-background.jpg') ?>')
                 center center / cover no-repeat fixed !important;
             color: #080c09;
@@ -192,10 +185,6 @@ if (!function_exists('sidebarLink')) {
             padding-top: 0;
         }
 
-        /* Logo at the top of the sidebar.
-           Footprint matches the previous logo: same block height,
-           same visible width (about 224px), centred. The single line
-           under it is the first .sidebar-section's own top border. */
         .app-sidebar .sidebar-logo {
             display: flex;
             align-items: center;
@@ -248,8 +237,6 @@ if (!function_exists('sidebarLink')) {
             color: #ffffff;
         }
 
-        /* Current page: filled background, bright bar on the left, bold text.
-           !important so a page's own ".sidebar-link.active" rule cannot undo it. */
         .app-sidebar .sidebar-link.active {
             background: rgba(255, 255, 255, 0.22) !important;
             border-left-color: #8be0a6 !important;
@@ -284,10 +271,7 @@ if (!function_exists('sidebarLink')) {
             padding: 28px;
         }
 
-        /* ===== Collapsible sidebar (desktop) =====
-           Hamburger stays fixed at the top-left. When the sidebar is
-           hidden it slides fully off-screen and the page content
-           expands to use the whole width. */
+        /* Desktop sidebar toggle */
         .sidebar-toggle-float {
             display: none;
             position: fixed;
@@ -325,20 +309,16 @@ if (!function_exists('sidebarLink')) {
                 display: inline-flex;
             }
 
-            /* The old in-sidebar hamburger (added by each page's script)
-               is replaced by the fixed one above. */
             .app-sidebar .sidebar-toggle-wrapper {
                 display: none !important;
             }
 
-            /* Keep the logo clear of the fixed hamburger */
             .app-sidebar {
                 padding-top: 60px;
                 width: var(--sidebar-width) !important;
                 min-width: var(--sidebar-width) !important;
             }
 
-            /* Header band for the hamburger (left) and profile icon (right) */
             body .app-main {
                 padding-top: 72px !important;
             }
@@ -360,12 +340,10 @@ if (!function_exists('sidebarLink')) {
                 transition: transform 0.3s ease, visibility 0s linear 0.3s;
             }
 
-            /* !important: some pages (reports, settings, add_resident)
-               hardcode margin-left: 250px !important on .app-main */
             body.sidebar-hidden .app-main {
                 margin-left: 0 !important;
                 width: 100% !important;
-                padding-top: 72px !important; /* room for the hamburger */
+                padding-top: 72px !important;
             }
         }
 
@@ -375,11 +353,7 @@ if (!function_exists('sidebarLink')) {
             }
         }
 
-        /* ===== One sidebar size on every page =====
-           Some pages still carry their own sidebar / .app-main CSS (a 260px
-           width, a flex body, a "folded" state, ...). These rules come after
-           the page's <style>, so they win and keep the layout identical
-           everywhere. */
+        /* Shared sidebar layout */
         body {
             display: block !important;
         }
@@ -421,26 +395,7 @@ if (!function_exists('sidebarLink')) {
             }
         }
 
-        @media (max-width: 991.98px) {
-            body .app-sidebar {
-                position: relative !important;
-                transform: none !important;
-                width: 100% !important;
-                min-width: 0 !important;
-                max-width: none !important;
-                height: auto !important;
-                overflow-y: visible !important;
-            }
-
-            body .app-main {
-                margin-left: 0 !important;
-                width: 100% !important;
-                max-width: none !important;
-                padding: 18px 12px !important;
-            }
-        }
-
-        /* ===== Top-right profile menu ===== */
+        /* Profile menu */
         .profile-menu {
             position: fixed;
             top: 10px;
@@ -607,7 +562,7 @@ if (!function_exists('sidebarLink')) {
             color: #8c1a15;
         }
 
-        /* Log out confirmation */
+        /* Logout confirmation */
         .logout-modal {
             position: fixed;
             inset: 0;
@@ -704,7 +659,6 @@ if (!function_exists('sidebarLink')) {
         }
 
         @media (max-width: 991.98px) {
-            /* Compact: avatar only, left of the mobile "Menu" button */
             .profile-menu {
                 top: 9px;
                 right: 84px;
@@ -741,26 +695,103 @@ if (!function_exists('sidebarLink')) {
             }
         }
 
+        /* ==================================================
+           MOBILE SIDEBAR OVERLAY
+           The sidebar floats over the page and does not push
+           the dashboard or other page content downward.
+        ================================================== */
+
         @media (max-width: 991.98px) {
+
             .mobile-navbar {
-                display: flex;
+                display: flex !important;
+                position: sticky;
+                top: 0;
+                z-index: 1050;
+                min-height: 58px;
             }
 
-            .app-sidebar {
+            #sidebarMobileCollapse {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: min(50vw, 320px) !important;
+                height: 100vh !important;
+                height: 100dvh !important;
+                max-height: 100vh !important;
+                max-height: 100dvh !important;
+                overflow-x: hidden !important;
+                overflow-y: auto !important;
+                background: var(--sidebar-green) !important;
+                z-index: 1040 !important;
+                box-shadow: 5px 0 18px rgba(0, 0, 0, 0.25);
+                overscroll-behavior: contain;
+            }
+
+            #sidebarMobileCollapse.collapse:not(.show) {
+                display: none !important;
+            }
+
+            #sidebarMobileCollapse.show,
+            #sidebarMobileCollapse.collapsing {
+                display: block !important;
+                width: min(50vw, 320px) !important;
+                height: 100vh !important;
+                height: 100dvh !important;
+            }
+
+            body .app-sidebar {
+                position: relative !important;
+                top: auto !important;
+                left: auto !important;
+                bottom: auto !important;
+                width: 100% !important;
+                min-width: 0 !important;
+                max-width: none !important;
+                height: auto !important;
+                min-height: 100vh !important;
+                min-height: 100dvh !important;
+                max-height: none !important;
+                padding: 72px 12px 24px !important;
+                overflow: visible !important;
+                transform: none !important;
+            }
+
+            .app-sidebar .sidebar-logo {
+                height: auto !important;
+                min-height: 100px;
+                margin-bottom: 12px;
+            }
+
+            .app-sidebar .sidebar-logo img {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+
+            body .app-main {
                 position: relative;
-                top: auto;
-                left: auto;
-                bottom: auto;
-                width: 100%;
-                height: auto;
-                max-height: none;
-                padding: 16px;
+                width: 100% !important;
+                max-width: none !important;
+                min-width: 0 !important;
+                margin-left: 0 !important;
+                padding: 18px 12px !important;
             }
 
-            .app-main {
-                width: 100%;
-                margin-left: 0;
-                padding: 18px 12px;
+            body.mobile-sidebar-open::after {
+                content: "";
+                position: fixed;
+                inset: 0;
+                z-index: 1035;
+                background: rgba(0, 0, 0, 0.45);
+            }
+
+            .mobile-navbar {
+                position: sticky;
+                z-index: 1050;
+            }
+
+            .profile-menu {
+                z-index: 1100;
             }
         }
     </style>
@@ -769,7 +800,6 @@ if (!function_exists('sidebarLink')) {
 <body>
 
 <script>
-    // Apply the saved sidebar state immediately (no flash on page load)
     try {
         if (localStorage.getItem('sidebarHidden') === '1') {
             document.body.classList.add('sidebar-hidden');
@@ -807,14 +837,24 @@ if (!function_exists('sidebarLink')) {
                 <?= htmlspecialchars($sbInitials, ENT_QUOTES, 'UTF-8') ?>
             <?php endif; ?>
         </span>
+
         <span class="profile-text">
-            <span class="profile-name"><?= htmlspecialchars((string) $sbUserName, ENT_QUOTES, 'UTF-8') ?></span>
-            <span class="profile-role"><?= htmlspecialchars($currentRole, ENT_QUOTES, 'UTF-8') ?></span>
+            <span class="profile-name">
+                <?= htmlspecialchars((string) $sbUserName, ENT_QUOTES, 'UTF-8') ?>
+            </span>
+            <span class="profile-role">
+                <?= htmlspecialchars($currentRole, ENT_QUOTES, 'UTF-8') ?>
+            </span>
         </span>
     </button>
 
     <div class="profile-dropdown" id="profileDropdown" role="menu" hidden>
-        <a class="pm-item pm-view" role="menuitem" href="<?= htmlspecialchars($sbProfileUrl, ENT_QUOTES, 'UTF-8') ?>">
+
+        <a
+            class="pm-item pm-view"
+            role="menuitem"
+            href="<?= htmlspecialchars($sbProfileUrl, ENT_QUOTES, 'UTF-8') ?>"
+        >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="8" r="4"></circle>
                 <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"></path>
@@ -825,24 +865,47 @@ if (!function_exists('sidebarLink')) {
             </svg>
         </a>
 
-        <button type="button" class="pm-item pm-logout" role="menuitem" id="logoutOpen">
+        <button
+            type="button"
+            class="pm-item pm-logout"
+            role="menuitem"
+            id="logoutOpen"
+        >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 3v9"></path>
                 <path d="M6.4 6.4a8 8 0 1 0 11.2 0"></path>
             </svg>
             <span>Logout</span>
         </button>
+
     </div>
 </div>
 
-<div class="logout-modal" id="logoutModal" role="dialog" aria-modal="true" aria-labelledby="logoutTitle" hidden>
+<div
+    class="logout-modal"
+    id="logoutModal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="logoutTitle"
+    hidden
+>
     <div class="logout-modal-card">
         <h2 id="logoutTitle">Log Out</h2>
         <p class="lm-strong">Are you sure you want to log out?</p>
         <p class="lm-sub">Unsaved changes on other tabs might be lost.</p>
+
         <div class="logout-modal-actions">
-            <button type="button" class="lm-btn lm-no" id="logoutNo">No</button>
-            <a class="lm-btn lm-yes" id="logoutYes" href="/homefor_thetander/logout.php">Yes, Log Out</a>
+            <button type="button" class="lm-btn lm-no" id="logoutNo">
+                No
+            </button>
+
+            <a
+                class="lm-btn lm-yes"
+                id="logoutYes"
+                href="/homefor_thetander/logout.php"
+            >
+                Yes, Log Out
+            </a>
         </div>
     </div>
 </div>
@@ -1074,25 +1137,25 @@ if (!function_exists('sidebarLink')) {
 
             <?php
             sidebarLink(
-    '/homefor_thetander/caretaker/profile.php',
-    'My Profile',
-    'profile.php',
-    $currentPage
-);
+                '/homefor_thetander/caretaker/profile.php',
+                'My Profile',
+                'profile.php',
+                $currentPage
+            );
 
-sidebarLink(
-    '/homefor_thetander/caretaker/settings.php',
-    'Settings',
-    'settings.php',
-    $currentPage
-);
+            sidebarLink(
+                '/homefor_thetander/caretaker/settings.php',
+                'Settings',
+                'settings.php',
+                $currentPage
+            );
 
-sidebarLink(
-    '/homefor_thetander/caretaker/archive.php',
-    'Archive & Restore',
-    'archive.php',
-    $currentPage
-);
+            sidebarLink(
+                '/homefor_thetander/caretaker/archive.php',
+                'Archive & Restore',
+                'archive.php',
+                $currentPage
+            );
             ?>
 
         <?php endif; ?>
@@ -1102,8 +1165,7 @@ sidebarLink(
 </div>
 
 <script>
-/* Keep the sidebar scroll position between pages, so clicking a link near the
-   bottom (Announcements, Settings, Archive...) does not jump back to the top. */
+/* Preserve sidebar scroll position between pages */
 (function () {
     var side = document.querySelector('.app-sidebar');
     if (!side) return;
@@ -1115,18 +1177,21 @@ sidebarLink(
         if (!isNaN(saved)) side.scrollTop = saved;
     } catch (e) {}
 
-    // No saved position (first visit): make sure the current item is visible.
     var active = side.querySelector('.sidebar-link.active');
+
     if (active && side.scrollHeight > side.clientHeight) {
         var top = active.offsetTop;
         var bottom = top + active.offsetHeight;
+
         if (top < side.scrollTop || bottom > side.scrollTop + side.clientHeight) {
             side.scrollTop = Math.max(0, top - side.clientHeight / 2);
         }
     }
 
     function save() {
-        try { sessionStorage.setItem(KEY, String(side.scrollTop)); } catch (e) {}
+        try {
+            sessionStorage.setItem(KEY, String(side.scrollTop));
+        } catch (e) {}
     }
 
     side.addEventListener('scroll', save, { passive: true });
@@ -1138,6 +1203,7 @@ sidebarLink(
 <main class="app-main">
 
 <script>
+/* Desktop sidebar toggle */
 (function () {
     var btn = document.getElementById('sidebarToggleFloat');
     if (!btn) return;
@@ -1148,15 +1214,19 @@ sidebarLink(
             document.body.classList.contains('sidebar-hidden') ? 'false' : 'true'
         );
     }
+
     sync();
 
     btn.addEventListener('click', function () {
         var hidden = document.body.classList.toggle('sidebar-hidden');
-        try { localStorage.setItem('sidebarHidden', hidden ? '1' : '0'); } catch (e) {}
+
+        try {
+            localStorage.setItem('sidebarHidden', hidden ? '1' : '0');
+        } catch (e) {}
+
         sync();
     });
 
-    // Enable slide animation only after first paint
     requestAnimationFrame(function () {
         requestAnimationFrame(function () {
             document.body.classList.add('sidebar-anim');
@@ -1166,6 +1236,7 @@ sidebarLink(
 </script>
 
 <script>
+/* Profile dropdown and logout confirmation */
 (function () {
     var btn = document.getElementById('profileBtn');
     var menu = document.getElementById('profileDropdown');
@@ -1173,6 +1244,7 @@ sidebarLink(
     var openLogout = document.getElementById('logoutOpen');
     var no = document.getElementById('logoutNo');
     var yes = document.getElementById('logoutYes');
+
     if (!btn || !menu || !modal) return;
 
     function closeMenu() {
@@ -1192,11 +1264,18 @@ sidebarLink(
 
     btn.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        if (menu.hidden) { openMenu(); } else { closeMenu(); }
+
+        if (menu.hidden) {
+            openMenu();
+        } else {
+            closeMenu();
+        }
     });
 
     document.addEventListener('click', function (ev) {
-        if (!menu.hidden && !menu.contains(ev.target)) closeMenu();
+        if (!menu.hidden && !menu.contains(ev.target)) {
+            closeMenu();
+        }
     });
 
     openLogout.addEventListener('click', function () {
@@ -1208,17 +1287,61 @@ sidebarLink(
     no.addEventListener('click', closeModal);
 
     modal.addEventListener('click', function (ev) {
-        if (ev.target === modal) closeModal();
+        if (ev.target === modal) {
+            closeModal();
+        }
     });
 
     document.addEventListener('keydown', function (ev) {
         if (ev.key !== 'Escape') return;
-        if (!modal.hidden) { closeModal(); }
-        else if (!menu.hidden) { closeMenu(); btn.focus(); }
+
+        if (!modal.hidden) {
+            closeModal();
+        } else if (!menu.hidden) {
+            closeMenu();
+            btn.focus();
+        }
     });
 })();
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+/* Mobile sidebar overlay behavior */
+document.addEventListener('DOMContentLoaded', function () {
+    var sidebar = document.getElementById('sidebarMobileCollapse');
+    var navbar = document.querySelector('.mobile-navbar');
+
+    if (!sidebar || !navbar) return;
+
+    function updateSidebarOverlay() {
+        var isMobile = window.innerWidth <= 991.98;
+        var isOpen = sidebar.classList.contains('show');
+
+        document.body.classList.toggle(
+            'mobile-sidebar-open',
+            isMobile && isOpen
+        );
+    }
+
+    sidebar.addEventListener('shown.bs.collapse', updateSidebarOverlay);
+    sidebar.addEventListener('hidden.bs.collapse', updateSidebarOverlay);
+
+    document.addEventListener('click', function (event) {
+        if (
+            document.body.classList.contains('mobile-sidebar-open') &&
+            !sidebar.contains(event.target) &&
+            !navbar.contains(event.target)
+        ) {
+            var collapse = bootstrap.Collapse.getOrCreateInstance(sidebar);
+            collapse.hide();
+        }
+    });
+
+    window.addEventListener('resize', updateSidebarOverlay);
+});
+</script>
+
 </body>
 </html>

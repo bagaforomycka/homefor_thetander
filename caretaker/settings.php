@@ -1,3 +1,4 @@
+
 <?php
 /**
  * Home for the Aged - Caretaker Settings
@@ -43,19 +44,17 @@ $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
 /*
 |--------------------------------------------------------------------------
-| USER TABLE SETTINGS (same values as admin/settings.php)
+| USER TABLE SETTINGS
 |--------------------------------------------------------------------------
-|  $usersTable   table that stores the accounts
-|  $userKeyCol   column that equals $_SESSION['user_id']
-|  $passwordCol  column that stores the password HASH
 */
+
 $usersTable  = 'users';
 $userKeyCol  = 'id';
 $passwordCol = 'password';
 
 /*
 |--------------------------------------------------------------------------
-| Tables (created only if missing; shared with admin/settings.php)
+| TABLES
 |--------------------------------------------------------------------------
 */
 
@@ -92,7 +91,7 @@ $error = '';
 
 /*
 |--------------------------------------------------------------------------
-| Helper functions
+| HELPER FUNCTIONS
 |--------------------------------------------------------------------------
 */
 
@@ -160,7 +159,6 @@ function settingsValidatePassword(string $password): void
     }
 }
 
-/* Each caretaker's own notification preferences are stored under their user ID. */
 function notificationKey(string $userId, string $option): string
 {
     return 'user_' . $userId . '_' . $option;
@@ -168,7 +166,7 @@ function notificationKey(string $userId, string $option): string
 
 /*
 |--------------------------------------------------------------------------
-| Available settings sections
+| SETTINGS SECTIONS
 |--------------------------------------------------------------------------
 */
 
@@ -193,7 +191,7 @@ if ($section !== '' && !isset($sections[$section])) {
 
 /*
 |--------------------------------------------------------------------------
-| Process form submissions
+| PROCESS FORM SUBMISSIONS
 |--------------------------------------------------------------------------
 */
 
@@ -206,9 +204,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = (string) ($_POST['action'] ?? '');
 
         try {
-            /*
-            | Save this caretaker's notification preferences
-            */
             if ($action === 'save_notifications') {
                 foreach (array_keys($notificationOptions) as $option) {
                     settingsSave(
@@ -219,15 +214,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
 
-                settingsLog($pdo, $currentUser, 'Caretaker updated notification preferences');
+                settingsLog(
+                    $pdo,
+                    $currentUser,
+                    'Caretaker updated notification preferences'
+                );
 
                 $notice = 'Notification preferences saved.';
                 $section = 'notifications';
             }
 
-            /*
-            | Change the signed-in caretaker's own password
-            */
             elseif ($action === 'change_password') {
                 $section = 'password';
 
@@ -254,6 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      WHERE `$userKeyCol` = ? AND role = 'caretaker'
                      LIMIT 1"
                 );
+
                 $stmt->execute([$currentUser]);
                 $storedHash = $stmt->fetchColumn();
 
@@ -266,6 +263,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      SET `$passwordCol` = ?
                      WHERE `$userKeyCol` = ? AND role = 'caretaker'"
                 );
+
                 $update->execute([
                     password_hash($new, PASSWORD_DEFAULT),
                     $currentUser,
@@ -273,7 +271,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 session_regenerate_id(true);
 
-                settingsLog($pdo, $currentUser, 'Caretaker changed own password');
+                settingsLog(
+                    $pdo,
+                    $currentUser,
+                    'Caretaker changed own password'
+                );
 
                 $notice = 'Your password was changed successfully.';
             }
@@ -295,7 +297,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /*
 |--------------------------------------------------------------------------
-| Load this caretaker's account details (read only)
+| LOAD ACCOUNT DETAILS
 |--------------------------------------------------------------------------
 */
 
@@ -310,7 +312,6 @@ $account = [
 ];
 
 if ($section === 'account') {
-    /* Step 1: the login account (users table). */
     try {
         $stmt = $pdo->prepare("
             SELECT username, full_name
@@ -318,6 +319,7 @@ if ($section === 'account') {
             WHERE `$userKeyCol` = ? AND role = 'caretaker'
             LIMIT 1
         ");
+
         $stmt->execute([$currentUser]);
         $userRow = $stmt->fetch();
 
@@ -332,11 +334,6 @@ if ($section === 'account') {
         $error = $error ?: 'Unable to load your account information.';
     }
 
-    /*
-     * Step 2: staff details (caretakers table), found by username.
-     * Kept as a separate query instead of a JOIN, so a collation
-     * difference between the two tables cannot break the page.
-     */
     if ($account['username'] !== '') {
         try {
             $stmt = $pdo->prepare("
@@ -345,6 +342,7 @@ if ($section === 'account') {
                 WHERE username = ?
                 LIMIT 1
             ");
+
             $stmt->execute([$account['username']]);
             $staff = $stmt->fetch();
 
@@ -363,8 +361,8 @@ if ($section === 'account') {
         }
     }
 }
-
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -389,82 +387,17 @@ if ($section === 'account') {
             font-family: Arial, Helvetica, sans-serif;
         }
 
-        /* SIDEBAR LOGO (injected at top of sidebar) */
-        .sidebar-logo {
-            display: block;
-            padding: 10px 4px 6px;
-        }
-
-        .sidebar-logo a {
-            display: block;
-        }
-
-        .sidebar-logo img {
-            display: block;
-            width: 100%;
-            max-width: 300px;
-            height: auto;
-            margin: 0 auto;
-            transform: scale(1.1);
-        }
-
         /*
-         * IMPORTANT:
-         * The shared includes/sidebar.php provides the sidebar and opens
-         * <main class="app-main">.
-         * Do not define another sidebar or open a second main element here.
+         * The shared sidebar controls its own width, positioning,
+         * mobile menu, and responsive layout.
          */
 
-        /* The script at the bottom adds .js-sidebar to the real sidebar */
-        .js-sidebar {
-            overflow-y: auto;
-            overscroll-behavior: contain;
-        }
-
         .app-main {
-            margin-left: 250px !important;
-            width: calc(100% - 250px) !important;
-            max-width: none !important;
             min-width: 0;
             min-height: 100vh;
             padding: 28px !important;
             box-shadow: none !important;
             overflow-x: hidden;
-        }
-
-        /* Mobile menu button + backdrop (hidden on desktop) */
-        .menu-toggle {
-            display: none;
-            position: fixed;
-            top: 12px;
-            left: 12px;
-            z-index: 1101;
-            width: 44px;
-            height: 44px;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #0b5426;
-            border-radius: 10px;
-            background: #0b5426;
-            color: #fff;
-            font-size: 22px;
-            line-height: 1;
-            cursor: pointer;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, .25);
-        }
-
-        .menu-toggle:focus-visible,
-        .back-to-top:focus-visible {
-            outline: 3px solid #2f80d9;
-            outline-offset: 2px;
-        }
-
-        .sidebar-backdrop {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 1099;
-            background: rgba(0, 0, 0, .45);
         }
 
         /* Back-to-top button */
@@ -500,6 +433,11 @@ if ($section === 'account') {
 
         .back-to-top:hover {
             background: #063b18;
+        }
+
+        .back-to-top:focus-visible {
+            outline: 3px solid #2f80d9;
+            outline-offset: 2px;
         }
 
         .page-heading {
@@ -546,7 +484,6 @@ if ($section === 'account') {
             line-height: 1.55;
         }
 
-        /* Single settings card: grouped list of links */
         .settings-group + .settings-group {
             margin-top: 26px;
         }
@@ -730,7 +667,6 @@ if ($section === 'account') {
             accent-color: #0b5426;
         }
 
-        /* Read-only account details */
         .detail-list {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -762,52 +698,18 @@ if ($section === 'account') {
             word-break: break-word;
         }
 
-        /*
-         * Remove the white active-link shadow without replacing the
-         * sidebar styling from includes/sidebar.php.
-         */
         .sidebar-link.active {
             box-shadow: none !important;
             outline: none !important;
         }
 
-        @media (max-width: 760px) {
-            .menu-toggle {
-                display: inline-flex;
-            }
-
-            /* Sidebar becomes a slide-in menu */
-            .js-sidebar {
-                position: fixed !important;
-                top: 0;
-                left: 0;
-                bottom: 0;
-                height: 100vh !important;
-                width: 260px;
-                max-width: 82vw;
-                z-index: 1100;
-                transform: translateX(-100%);
-                transition: transform .25s ease;
-            }
-
-            body.sidebar-open .js-sidebar {
-                transform: translateX(0);
-            }
-
-            body.sidebar-open .sidebar-backdrop {
-                display: block;
-            }
-
-            body.sidebar-open {
-                overflow: hidden;
-            }
-
+        @media (max-width: 991.98px) {
             .app-main {
-                margin-left: 0 !important;
-                width: 100% !important;
-                padding: 70px 12px 18px !important;
+                padding: 18px 12px !important;
             }
+        }
 
+        @media (max-width: 760px) {
             .page-heading h1 {
                 font-size: 25px;
             }
@@ -831,8 +733,13 @@ if ($section === 'account') {
         }
 
         @media (prefers-reduced-motion: reduce) {
-            html { scroll-behavior: auto; }
-            .js-sidebar, .back-to-top { transition: none; }
+            html {
+                scroll-behavior: auto;
+            }
+
+            .back-to-top {
+                transition: none;
+            }
         }
     </style>
 </head>
@@ -841,15 +748,11 @@ if ($section === 'account') {
 
 <?php
 /*
- * This is the shared sidebar used by the other modules.
- * It already opens <main class="app-main">.
+ * Shared sidebar opens <main class="app-main">.
+ * It also handles the desktop and mobile navigation.
  */
 require_once __DIR__ . '/../includes/sidebar.php';
 ?>
-
-<button type="button" class="menu-toggle" id="menuToggle"
-        aria-label="Open menu" aria-expanded="false">&#9776;</button>
-<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
 <header class="page-heading">
     <div>
@@ -871,8 +774,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
 <?php endif; ?>
 
 <?php if ($section === ''): ?>
-
-    <!-- SETTINGS OVERVIEW (one card, grouped) -->
 
     <section class="panel">
         <h2>My Settings</h2>
@@ -1018,20 +919,39 @@ require_once __DIR__ . '/../includes/sidebar.php';
 
                 <div class="field">
                     <label for="current_password">Current Password</label>
-                    <input id="current_password" name="current_password" type="password"
-                           autocomplete="current-password" required>
+                    <input
+                        id="current_password"
+                        name="current_password"
+                        type="password"
+                        autocomplete="current-password"
+                        required
+                    >
                 </div>
 
                 <div class="field">
                     <label for="new_password">New Password</label>
-                    <input id="new_password" name="new_password" type="password"
-                           minlength="8" maxlength="200" autocomplete="new-password" required>
+                    <input
+                        id="new_password"
+                        name="new_password"
+                        type="password"
+                        minlength="8"
+                        maxlength="200"
+                        autocomplete="new-password"
+                        required
+                    >
                 </div>
 
                 <div class="field">
                     <label for="confirm_password">Confirm New Password</label>
-                    <input id="confirm_password" name="confirm_password" type="password"
-                           minlength="8" maxlength="200" autocomplete="new-password" required>
+                    <input
+                        id="confirm_password"
+                        name="confirm_password"
+                        type="password"
+                        minlength="8"
+                        maxlength="200"
+                        autocomplete="new-password"
+                        required
+                    >
                 </div>
 
                 <div class="actions">
@@ -1049,106 +969,47 @@ require_once __DIR__ . '/../includes/sidebar.php';
     Settings changes are saved to the database.
 </p>
 
-<button type="button" class="back-to-top" id="backToTop" aria-label="Back to top">&uarr;</button>
+<button
+    type="button"
+    class="back-to-top"
+    id="backToTop"
+    aria-label="Back to top"
+>
+    &uarr;
+</button>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    /* ---- Find the real sidebar (checked in priority order) ---- */
-    var sidebar = null;
-    ['.app-sidebar', '.sidebar', '#sidebar', '.sidebar-container', 'aside', 'nav']
-        .some(function (selector) {
-            sidebar = document.querySelector(selector);
-            return !!sidebar;
-        });
-
-    var toggle   = document.getElementById('menuToggle');
-    var backdrop = document.getElementById('sidebarBackdrop');
-
-    function setMenu(open) {
-        document.body.classList.toggle('sidebar-open', open);
-        if (toggle) {
-            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-            toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-            toggle.innerHTML = open ? '&times;' : '&#9776;';
-        }
-    }
-
-    if (sidebar) {
-        sidebar.classList.add('js-sidebar');
-
-        /* Hide the old text title and subtitle */
-        var oldTexts = ['home for the aged', 'care management system'];
-
-        sidebar.querySelectorAll('*').forEach(function (el) {
-            if (
-                el.children.length === 0 &&
-                oldTexts.indexOf(el.textContent.trim().toLowerCase()) !== -1
-            ) {
-                el.style.display = 'none';
-            }
-        });
-
-        /* Add the logo at the top of the sidebar */
-        if (!sidebar.querySelector('.sidebar-logo')) {
-            var logo = document.createElement('div');
-            logo.className = 'sidebar-logo';
-            logo.innerHTML =
-                '<a href="/homefor_thetander/caretaker/dashboard.php">' +
-                '<img src="/homefor_thetander/images/white1.png" ' +
-                'alt="Home for the Aged - Care, Comfort, Dignity">' +
-                '</a>';
-
-            sidebar.insertBefore(logo, sidebar.firstChild);
-        }
-
-        /* Close the mobile menu after choosing a link */
-        sidebar.addEventListener('click', function (e) {
-            if (e.target.closest('a')) {
-                setMenu(false);
-            }
-        });
-    }
-
-    if (toggle) {
-        toggle.addEventListener('click', function () {
-            setMenu(!document.body.classList.contains('sidebar-open'));
-        });
-    }
-
-    if (backdrop) {
-        backdrop.addEventListener('click', function () { setMenu(false); });
-    }
-
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { setMenu(false); }
-    });
-
-    /* Leaving mobile width closes the menu */
-    window.addEventListener('resize', function () {
-        if (window.innerWidth > 760) { setMenu(false); }
-    });
-
-    /* ---- Back-to-top button ---- */
-    var topBtn = document.getElementById('backToTop');
+    const topBtn = document.getElementById('backToTop');
 
     function updateTopBtn() {
-        var y = window.pageYOffset || document.documentElement.scrollTop || 0;
-        topBtn.classList.toggle('show', y > 300);
+        const y = window.pageYOffset ||
+                  document.documentElement.scrollTop ||
+                  0;
+
+        if (topBtn) {
+            topBtn.classList.toggle('show', y > 300);
+        }
     }
 
     if (topBtn) {
-        window.addEventListener('scroll', updateTopBtn, { passive: true });
+        window.addEventListener('scroll', updateTopBtn, {
+            passive: true
+        });
+
         updateTopBtn();
 
         topBtn.addEventListener('click', function () {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
         });
     }
 });
 </script>
 
-<!-- Do not add another </main> here.
-     The shared includes/sidebar.php already opened the main element. -->
+<!-- The shared sidebar already opened <main class="app-main">. -->
 
 </main>
 </body>
