@@ -469,7 +469,7 @@ $csrf = $_SESSION['care_csrf'];
     .p-blue { background: #dcebff; color: #1a4f9c; }
 
     /* Create form */
-    .form-panel { background: rgba(255, 255, 255, .97); border-radius: 12px; padding: 20px 22px; max-width: 980px; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
+    .form-panel { background: rgba(255, 255, 255, .97); border-radius: 12px; padding: 20px 22px; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); width: 100%; }
     .form-panel .lbl { display: block; font-size: 13px; font-weight: 700; color: #1b6b3a; margin: 0 0 4px; }
     .field { position: relative; margin-bottom: 14px; }
     .field > i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 15px; color: #1b6b3a; pointer-events: none; }
