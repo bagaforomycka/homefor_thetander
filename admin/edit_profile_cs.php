@@ -49,7 +49,6 @@ if (!$record) {
 
 // Handle Form Submission for Updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $employee_id = trim($_POST['employee_id'] ?? '');
     $first_name = trim($_POST['first_name'] ?? '');
     $last_name = trim($_POST['last_name'] ?? '');
     $contact = trim($_POST['contact'] ?? '');
@@ -59,7 +58,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $status = trim($_POST['status'] ?? 'Active');
     $username = trim($_POST['username'] ?? '');
 
-    if (empty($employee_id)) { $errors[] = 'Employee ID is required.'; }
     if (empty($first_name)) { $errors[] = 'First name is required.'; }
     if (empty($last_name)) { $errors[] = 'Last name is required.'; }
     if (empty($username)) { $errors[] = 'Username is required.'; }
@@ -68,9 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $full_name = $first_name . ' ' . $last_name;
 
-            $sql = "UPDATE caretakers SET employee_id = ?, full_name = ?, contact = ?, address = ?, position = ?, shift = ?, status = ?, username = ? WHERE id = ?";
+            $sql = "UPDATE caretakers SET full_name = ?, contact = ?, address = ?, position = ?, shift = ?, status = ?, username = ? WHERE id = ?";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$employee_id, $full_name, $contact, $address, $position, $shift, $status, $username, $record['id']]);
+            $stmt->execute([$full_name, $contact, $address, $position, $shift, $status, $username, $record['id']]);
 
             // Refresh record data after update
             $stmt = $pdo->prepare("SELECT * FROM caretakers WHERE id = ?");
@@ -178,10 +176,7 @@ $lastNameVal = $nameParts[1] ?? '';
                             
                             <h5 class="section-title">Personal Information</h5>
                             <div class="row g-3 mb-4">
-                                <div class="col-md-4">
-                                    <label class="form-label">Employee ID</label>
-                                    <input type="text" class="form-control" name="employee_id" value="<?= e($record['employee_id']) ?>" required>
-                                </div>
+                               
                                 <div class="col-md-4">
                                     <label class="form-label">First Name</label>
                                     <input type="text" class="form-control" name="first_name" value="<?= e($firstNameVal) ?>" required>

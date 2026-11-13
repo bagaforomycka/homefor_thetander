@@ -171,10 +171,6 @@ if ($idParam === '') {
                             <div class="section-title">Personal Information</div>
                             <div class="row g-3 mb-4">
                                 <div class="col-md-6">
-                                    <div class="form-label">Employee ID</div>
-                                    <div class="info-box"><?= e($record['employee_id']) ?></div>
-                                </div>
-                                <div class="col-md-6">
                                     <div class="form-label">Full Name</div>
                                     <div class="info-box"><?= e($record['full_name']) ?></div>
                                 </div>

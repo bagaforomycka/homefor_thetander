@@ -206,6 +206,7 @@ $caretakers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <option value="">All statuses</option>
                     <option value="Active" <?= $status_filter === 'Active' ? 'selected' : '' ?>>Active</option>
                     <option value="Inactive" <?= $status_filter === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
+                    <option value="On Leave" <?= $status_filter === 'On Leave' ? 'selected' : '' ?>>On Leave</option>
                 </select>
             </div>
             <div class="col-md-2 d-flex gap-2">
