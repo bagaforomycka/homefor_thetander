@@ -713,9 +713,6 @@ body {
 
     <div class="d-flex flex-wrap gap-2 no-print">
 
-        <a href="reports.php?tab=add" class="btn btn-success btn-sm">
-            + Add Report
-        </a>
 
         <button onclick="window.print()" class="btn btn-outline-success btn-sm">
             Print
@@ -931,10 +928,7 @@ body {
 
         <?php if ($tab === 'active'): ?>
 
-            <a href="reports.php?tab=add"
-               class="btn btn-success btn-sm no-print">
-                + Add Report
-            </a>
+          
 
         <?php endif; ?>
 
