@@ -758,33 +758,62 @@ if (is_file(__DIR__ . '/caretakers.php')) {
             margin-top: 18px;
         }
 
+        /*
+         * Buttons. !important is used so these win over any .btn / button
+         * rules coming from includes/sidebar.php or a global stylesheet.
+         */
         .btn {
-            display: inline-flex;
+            display: inline-flex !important;
             align-items: center;
             justify-content: center;
-            padding: 11px 16px;
-            border: 1px solid #0b5426;
-            border-radius: 8px;
-            background: #0b5426;
-            color: #fff;
-            text-decoration: none;
+            padding: 11px 16px !important;
+            border: 1px solid #0b5426 !important;
+            border-radius: 8px !important;
+            background: #0b5426 !important;
+            color: #fff !important;
+            text-decoration: none !important;
             font: inherit;
             font-weight: 700;
             cursor: pointer;
         }
 
         .btn:hover {
-            background: #063b18;
-            color: #fff;
+            background: #063b18 !important;
+            color: #fff !important;
         }
 
         .btn.secondary {
-            background: #fff;
-            color: #0b5426;
+            background: #fff !important;
+            color: #0b5426 !important;
         }
 
         .btn.secondary:hover {
-            background: #eef5ef;
+            background: #eef5ef !important;
+        }
+
+        /* White buttons with colored borders */
+        .btn.btn-yellow-border,
+        .btn.btn-green-border {
+            background: #fff !important;
+            color: #0b5426 !important;
+        }
+
+        .btn.btn-yellow-border {
+            border: 3px solid #f5c518 !important;
+        }
+
+        .btn.btn-green-border {
+            border: 3px solid #22a447 !important;
+        }
+
+        .btn.btn-yellow-border:hover {
+            background: #fff9e0 !important;
+            color: #0b5426 !important;
+        }
+
+        .btn.btn-green-border:hover {
+            background: #eef8f0 !important;
+            color: #0b5426 !important;
         }
 
         .check-row {
@@ -1052,7 +1081,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 <?php endforeach; ?>
 
                 <div class="actions">
-                    <button class="btn" type="submit">
+                    <button class="btn btn-green-border" type="submit">
                         Save Notification Settings
                     </button>
                 </div>
@@ -1145,7 +1174,7 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 </div>
 
                 <div class="actions">
-                    <button class="btn" type="submit">
+                    <button class="btn btn-green-border" type="submit">
                         Save Permission Preferences
                     </button>
                 </div>
@@ -1184,8 +1213,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 </div>
 
                 <div class="actions">
-                    <button class="btn" type="submit">Change Password</button>
-                    <a class="btn secondary" href="settings.php?section=forgot-password">
+                    <button class="btn btn-yellow-border" type="submit">Change Password</button>
+                    <a class="btn" href="settings.php?section=forgot-password">
                         Forgot password?
                     </a>
                 </div>
