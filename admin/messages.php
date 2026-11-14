@@ -691,10 +691,7 @@ try {
 
         <div class="header-actions">
 
-            <a href="dashboard.php" class="btn btn-outline-success">
-                <i class="bi bi-arrow-left"></i>
-                Dashboard
-            </a>
+           
 
             <a href="new_message.php" class="btn btn-success">
                 <i class="bi bi-plus-lg"></i>

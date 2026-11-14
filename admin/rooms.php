@@ -417,8 +417,7 @@ try {
                     <option value="Maintenance">Maintenance</option>
                 </select>
                 <div class="form-text">
-                    A room becomes Occupied automatically when a resident is
-                    assigned, and Available again when that resident is archived.
+                   
                 </div>
             </div>
         </div>
