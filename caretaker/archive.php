@@ -81,6 +81,100 @@ function ctTable(array $allTables, array $candidates): ?string
     return null;
 }
 
+/*
+ * Returns ['ok' => bool, 'reason' => string, ...details]
+ */
+function ctResolve(PDO $pdo, array $cfg, array $allTables): array
+{
+    /* ---- My Residents ---- */
+    if ($cfg['kind'] === 'residents') {
+        if (!in_array('caretaker_resident_archive', $allTables, true)) {
+            return ['ok' => false, 'reason' => 'The caretaker_resident_archive table does not exist yet.'];
+        }
+
+        $cols = ctColumns($pdo, 'caretaker_resident_archive');
+
+        foreach (['resident_id', 'caretaker_user_id'] as $needed) {
+            if (!in_array($needed, $cols, true)) {
+                return ['ok' => false, 'reason' => "caretaker_resident_archive has no `$needed` column."];
+            }
+        }
+
+        return [
+            'ok' => true,
+            'table' => 'caretaker_resident_archive',
+            'date' => ctPick($cols, ['archived_at', 'created_at'])
+        ];
+    }
+
+    /* ---- Report / message tables ---- */
+    $table = ctTable($allTables, $cfg['tables']);
+
+    if ($table === null) {
+        return ['ok' => false, 'reason' => 'No ' . $cfg['label'] . ' table was found (looked for: ' . implode(', ', $cfg['tables']) . ').'];
+    }
+
+    $cols = ctColumns($pdo, $table);
+
+    if (!in_array('id', $cols, true)) {
+        return ['ok' => false, 'reason' => "The `$table` table has no `id` column."];
+    }
+
+    /* Add archived_at automatically when missing. */
+    if (!in_array('archived_at', $cols, true)) {
+        try {
+            $pdo->exec("ALTER TABLE `$table` ADD COLUMN `archived_at` TIMESTAMP NULL DEFAULT NULL");
+            $cols[] = 'archived_at';
+        } catch (Throwable $e) {
+            return ['ok' => false, 'reason' => "Unable to add archived_at to `$table`: " . $e->getMessage()];
+        }
+    }
+
+    /* Expanded fallback candidates for ownership mapping */
+    $candidates = array_merge($cfg['owner'], ['caretaker_id', 'user_id', 'created_by', 'staff_id', 'reported_by']);
+
+    /* Which column(s) tie a row to the logged-in caretaker. */
+    if ($cfg['multi_owner']) {
+        $ownerCols = ctPickAll($cols, $candidates);
+    } else {
+        $first = ctPick($cols, $candidates);
+        $ownerCols = $first === null ? [] : [$first];
+    }
+
+    if (!$ownerCols) {
+        return [
+            'ok' => false,
+            'reason' => "Could not tell which `$table` column links a record to a caretaker. Found columns: " . implode(', ', $cols)
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'table' => $table,
+        'cols' => $cols,
+        'owner' => $ownerCols,
+        'title' => ctPick($cols, ['title', 'subject', 'report_title', 'incident_type', 'report_type', 'category', 'type']),
+        'detail' => ctPick($cols, ['description', 'details', 'summary', 'message', 'body', 'content', 'notes']),
+        'date' => ctPick($cols, ['incident_date', 'report_date', 'date', 'sent_at', 'created_at']),
+        'resident' => in_array('resident_id', $cols, true)
+    ];
+}
+
+/* WHERE fragment + params that restrict rows to the logged-in caretaker. */
+function ctOwnerWhere(array $meta, int $userId, string $alias = 't'): array
+{
+    $parts = [];
+    $params = [];
+
+    foreach ($meta['owner'] as $i => $column) {
+        $key = 'uid' . $i;
+        $parts[] = "$alias.`$column` = :$key";
+        $params[$key] = $userId;
+    }
+
+    return ['(' . implode(' OR ', $parts) . ')', $params];
+}
+
 $userId = (int)$_SESSION['user_id'];
 
 if (empty($_SESSION['caretaker_archive_csrf'])) {
@@ -98,7 +192,7 @@ $categories = [
         'noun' => 'incident report',
         'kind' => 'table',
         'tables' => ['incident_reports', 'incident_report', 'incidents'],
-        'owner' => ['caretaker_user_id', 'reported_by', 'created_by', 'submitted_by', 'user_id', 'author_id', 'caretaker_id', 'staff_id'],
+        'owner' => ['submitted_by_id', 'caretaker_user_id', 'reported_by', 'created_by', 'submitted_by', 'user_id', 'author_id', 'caretaker_id', 'staff_id'],
         'multi_owner' => false,
         'back' => 'incident_reports.php',
         'back_label' => 'Incident Reports',
@@ -109,7 +203,7 @@ $categories = [
         'noun' => 'care report',
         'kind' => 'table',
         'tables' => ['care_reports', 'care_report'],
-        'owner' => ['caretaker_user_id', 'reported_by', 'created_by', 'submitted_by', 'user_id', 'author_id', 'caretaker_id', 'staff_id'],
+        'owner' => ['submitted_by_id', 'caretaker_user_id', 'reported_by', 'created_by', 'submitted_by', 'user_id', 'author_id', 'caretaker_id', 'staff_id'],
         'multi_owner' => false,
         'back' => 'care_reports.php',
         'back_label' => 'Care Reports',
@@ -170,97 +264,6 @@ if (
     } catch (Throwable $e) {
         error_log('Caretaker archive ensure table: ' . $e->getMessage());
     }
-}
-
-/*
- * Returns ['ok' => bool, 'reason' => string, ...details]
- */
-function ctResolve(PDO $pdo, array $cfg, array $allTables): array
-{
-    /* ---- My Residents ---- */
-    if ($cfg['kind'] === 'residents') {
-        if (!in_array('caretaker_resident_archive', $allTables, true)) {
-            return ['ok' => false, 'reason' => 'The caretaker_resident_archive table does not exist yet.'];
-        }
-
-        $cols = ctColumns($pdo, 'caretaker_resident_archive');
-
-        foreach (['resident_id', 'caretaker_user_id'] as $needed) {
-            if (!in_array($needed, $cols, true)) {
-                return ['ok' => false, 'reason' => "caretaker_resident_archive has no `$needed` column."];
-            }
-        }
-
-        return [
-            'ok' => true,
-            'table' => 'caretaker_resident_archive',
-            'date' => ctPick($cols, ['archived_at', 'created_at'])
-        ];
-    }
-
-    /* ---- Report / message tables ---- */
-    $table = ctTable($allTables, $cfg['tables']);
-
-    if ($table === null) {
-        return ['ok' => false, 'reason' => 'No ' . $cfg['label'] . ' table was found (looked for: ' . implode(', ', $cfg['tables']) . ').'];
-    }
-
-    $cols = ctColumns($pdo, $table);
-
-    if (!in_array('id', $cols, true)) {
-        return ['ok' => false, 'reason' => "The `$table` table has no `id` column."];
-    }
-
-    /* Add archived_at automatically when missing. */
-    if (!in_array('archived_at', $cols, true)) {
-        try {
-            $pdo->exec("ALTER TABLE `$table` ADD COLUMN `archived_at` TIMESTAMP NULL DEFAULT NULL");
-            $cols[] = 'archived_at';
-        } catch (Throwable $e) {
-            return ['ok' => false, 'reason' => "Unable to add archived_at to `$table`: " . $e->getMessage()];
-        }
-    }
-
-    /* Which column(s) tie a row to the logged-in caretaker. */
-    if ($cfg['multi_owner']) {
-        $ownerCols = ctPickAll($cols, $cfg['owner']);
-    } else {
-        $first = ctPick($cols, $cfg['owner']);
-        $ownerCols = $first === null ? [] : [$first];
-    }
-
-    if (!$ownerCols) {
-        return [
-            'ok' => false,
-            'reason' => "Could not tell which `$table` column links a record to a caretaker, so nothing is shown (to keep other people's records private)."
-        ];
-    }
-
-    return [
-        'ok' => true,
-        'table' => $table,
-        'cols' => $cols,
-        'owner' => $ownerCols,
-        'title' => ctPick($cols, ['title', 'subject', 'report_title', 'incident_type', 'report_type', 'category', 'type']),
-        'detail' => ctPick($cols, ['description', 'details', 'summary', 'message', 'body', 'content', 'notes']),
-        'date' => ctPick($cols, ['incident_date', 'report_date', 'date', 'sent_at', 'created_at']),
-        'resident' => in_array('resident_id', $cols, true)
-    ];
-}
-
-/* WHERE fragment + params that restrict rows to the logged-in caretaker. */
-function ctOwnerWhere(array $meta, int $userId, string $alias = 't'): array
-{
-    $parts = [];
-    $params = [];
-
-    foreach ($meta['owner'] as $i => $column) {
-        $key = 'uid' . $i;
-        $parts[] = "$alias.`$column` = :$key";
-        $params[$key] = $userId;
-    }
-
-    return ['(' . implode(' OR ', $parts) . ')', $params];
 }
 
 $meta = [];
@@ -574,7 +577,6 @@ $isMessages = $tab === 'messages';
             margin: 0;
         }
 
-
         /* TABS */
         .archive-tabs {
             position: relative;
@@ -652,7 +654,7 @@ $isMessages = $tab === 'messages';
 
         .btn-restore {
             background: #17683a;
-            border: 2px solid #ffc107 !important; /* Yellow border as requested */
+            border: 2px solid #ffc107 !important;
             color: #fff;
             border-radius: 6px;
             padding: 7px 15px;
@@ -691,8 +693,6 @@ $isMessages = $tab === 'messages';
                 font-size: 23px;
             }
 
-            
-
             .archive-tabs {
                 display: grid !important;
                 grid-template-columns: 1fr 1fr !important;
@@ -728,10 +728,6 @@ $isMessages = $tab === 'messages';
             Back to <?= h($cfg['back_label']) ?>
         </a>
     </div>
-
-   
-
-        
 
     <!-- CATEGORY TABS -->
     <ul class="nav nav-pills archive-tabs mb-3">
@@ -774,7 +770,6 @@ $isMessages = $tab === 'messages';
                 <p class="text-secondary small mb-0">
                     <?= h($cfg['behavior']) ?>. Only your own records are shown here.
                 </p>
-
             </div>
 
             <span class="badge text-bg-secondary"><?= count($rows) ?> record(s)</span>

@@ -1,4 +1,3 @@
-
 <?php
 /**
  * Home for the Aged - Caretaker Settings
@@ -357,7 +356,7 @@ if ($section === 'account') {
             }
         } catch (Throwable $exception) {
             error_log('Caretaker settings (caretakers lookup): ' . $exception->getMessage());
-            $error = $error ?: 'Some staff details could not be loaded.';
+           
         }
     }
 }
@@ -955,7 +954,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
                 </div>
 
                 <div class="actions">
-                    <button class="btn" type="submit">Change Password</button>
+                    <!-- Explicitly styled green button for change password -->
+                    <button class="btn" type="submit" style="background-color: #0b5426; border-color: #0b5426; color: #fff;">Change Password</button>
                 </div>
             </form>
         </section>
