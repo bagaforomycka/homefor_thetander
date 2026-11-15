@@ -1,3 +1,4 @@
+
 <?php
 session_start();
 
@@ -16,13 +17,21 @@ function e($value): string
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-$recordId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 $record = null;
 $error = '';
 
-if (!$recordId || $recordId < 1) {
+$recordId = $_GET['id'] ?? '';
+
+if (
+    !is_string($recordId) ||
+    $recordId === '' ||
+    !ctype_digit($recordId) ||
+    (int)$recordId < 1
+) {
     $error = 'Invalid health record ID.';
 } else {
+    $recordId = (int)$recordId;
+
     try {
         $stmt = $pdo->prepare("
             SELECT
@@ -44,7 +53,8 @@ if (!$recordId || $recordId < 1) {
                 r.status,
                 r.profile_picture
             FROM health_records hr
-            INNER JOIN residents r ON r.id = hr.resident_id
+            INNER JOIN residents r
+                ON r.id = hr.resident_id
             WHERE hr.id = :id
               AND hr.archived_at IS NULL
             LIMIT 1
@@ -54,7 +64,7 @@ if (!$recordId || $recordId < 1) {
         $record = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$record) {
-            $error = 'Health record not found. It may have been archived.';
+            $error = 'Health record not found. It may have been archived or deleted.';
         }
 
     } catch (PDOException $ex) {
@@ -67,6 +77,7 @@ $picture = '../images/default-profile.png';
 
 if ($record && !empty($record['profile_picture'])) {
     $filename = basename($record['profile_picture']);
+
     $physicalPath = __DIR__ . '/uploads/residentspic/' . $filename;
 
     if (is_file($physicalPath)) {
@@ -82,11 +93,18 @@ if ($record) {
         $record['first_name'],
         $record['middle_name'],
         $record['last_name']
-    ])));
+    ], function ($value) {
+        return trim((string)$value) !== '';
+    })));
 
-    $checkupDate = $record['record_date'] ?: 'Not provided';
-    if (!empty($record['record_date']) && strtotime($record['record_date'])) {
-        $checkupDate = date('F j, Y', strtotime($record['record_date']));
+    $checkupDate = 'Not provided';
+
+    if (!empty($record['record_date'])) {
+        $timestamp = strtotime($record['record_date']);
+
+        if ($timestamp !== false) {
+            $checkupDate = date('F j, Y', $timestamp);
+        }
     }
 }
 ?>
@@ -105,14 +123,21 @@ if ($record) {
     >
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             background: #f3f7f4;
             font-family: Arial, sans-serif;
+            margin: 0;
         }
 
         .profile-page {
+            width: 100%;
             max-width: 1500px;
             margin: auto;
+            padding: 20px;
         }
 
         .page-header {
@@ -127,6 +152,7 @@ if ($record) {
             color: #17683a;
             font-size: 28px;
             font-weight: 700;
+            margin-bottom: 6px;
         }
 
         .page-header p {
@@ -157,12 +183,14 @@ if ($record) {
             border-radius: 50%;
             border: 3px solid #e1ebe4;
             background: #e6f0e8;
+            flex-shrink: 0;
         }
 
         .profile-heading h2 {
             color: #17683a;
             font-size: 25px;
             font-weight: 700;
+            margin-bottom: 8px;
         }
 
         .section-title {
@@ -217,7 +245,36 @@ if ($record) {
             border-color: #d6a000;
         }
 
+        .profile-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .profile-heading {
+                flex-wrap: wrap;
+            }
+
+            .profile-actions {
+                width: 100%;
+                margin-top: 10px;
+            }
+        }
+
         @media (max-width: 576px) {
+            .profile-page {
+                padding: 12px;
+            }
+
+            .page-header {
+                padding: 18px;
+            }
+
+            .page-header h1 {
+                font-size: 23px;
+            }
+
             .profile-panel {
                 padding: 18px;
             }
@@ -230,10 +287,19 @@ if ($record) {
             .profile-heading h2 {
                 font-size: 20px;
             }
+
+            .profile-actions .btn {
+                flex: 1;
+            }
         }
 
         @media print {
-            .sidebar, #sidebar, .sidebar-container, aside, .app-sidebar, .no-print {
+            .sidebar,
+            #sidebar,
+            .sidebar-container,
+            aside,
+            .app-sidebar,
+            .no-print {
                 display: none !important;
             }
 
@@ -241,8 +307,18 @@ if ($record) {
                 background: #fff;
             }
 
+            .profile-page {
+                max-width: 100%;
+                padding: 0;
+            }
+
             .profile-panel {
                 box-shadow: none;
+                border: none;
+            }
+
+            .page-header {
+                background: #fff;
             }
         }
     </style>
@@ -267,7 +343,7 @@ if ($record) {
 
     </div>
 
-    <?php if ($error): ?>
+    <?php if ($error !== ''): ?>
 
         <div class="alert alert-danger">
             <?= e($error) ?>
@@ -283,9 +359,11 @@ if ($record) {
                     src="<?= e($picture) ?>"
                     alt="Resident profile picture"
                     class="profile-picture"
+                    onerror="this.onerror=null;this.src='../images/default-profile.png';"
                 >
 
                 <div class="flex-grow-1">
+
                     <h2><?= e($fullName) ?></h2>
 
                     <p class="text-secondary mb-2">
@@ -296,11 +374,26 @@ if ($record) {
                     <span class="status-badge">
                         Check-up: <?= e($checkupDate) ?>
                     </span>
+
                 </div>
 
-                <div class="d-flex flex-wrap gap-2 no-print">
-                    <button type="button" class="btn btn-outline-secondary" onclick="window.print()">Print</button>
-                    <a href="add_health_record.php?edit=<?= (int)$record['id'] ?>" class="btn btn-edit">Edit</a>
+                <div class="profile-actions no-print">
+
+                    <button
+                        type="button"
+                        class="btn btn-outline-secondary"
+                        onclick="window.print()"
+                    >
+                        Print
+                    </button>
+
+                    <a
+                        href="add_health_record.php?edit=<?= (int)$record['id'] ?>"
+                        class="btn btn-edit"
+                    >
+                        Edit
+                    </a>
+
                 </div>
 
             </div>
@@ -311,11 +404,21 @@ if ($record) {
 
                 <?php
                 $vitalDetails = [
-                    'Blood Pressure' => $record['blood_pressure'] ?: 'Not recorded',
-                    'Temperature' => ($record['temperature'] !== null && $record['temperature'] !== '')
+                    'Blood Pressure' => !empty($record['blood_pressure'])
+                        ? $record['blood_pressure']
+                        : 'Not recorded',
+
+                    'Temperature' => (
+                        $record['temperature'] !== null &&
+                        $record['temperature'] !== ''
+                    )
                         ? $record['temperature'] . ' °C'
                         : 'Not recorded',
-                    'Weight' => ($record['weight'] !== null && $record['weight'] !== '')
+
+                    'Weight' => (
+                        $record['weight'] !== null &&
+                        $record['weight'] !== ''
+                    )
                         ? $record['weight'] . ' kg'
                         : 'Not recorded'
                 ];
@@ -340,9 +443,20 @@ if ($record) {
 
                 <?php
                 $medicalDetails = [
-                    'Medical Conditions' => trim((string)$record['medical_conditions']) !== '' ? $record['medical_conditions'] : 'None recorded',
-                    'Allergies' => trim((string)$record['allergies']) !== '' ? $record['allergies'] : 'None recorded',
-                    'Medications' => trim((string)$record['medications']) !== '' ? $record['medications'] : 'None recorded'
+                    'Medical Conditions' =>
+                        trim((string)$record['medical_conditions']) !== ''
+                            ? $record['medical_conditions']
+                            : 'None recorded',
+
+                    'Allergies' =>
+                        trim((string)$record['allergies']) !== ''
+                            ? $record['allergies']
+                            : 'None recorded',
+
+                    'Medications' =>
+                        trim((string)$record['medications']) !== ''
+                            ? $record['medications']
+                            : 'None recorded'
                 ];
                 ?>
 
@@ -366,7 +480,11 @@ if ($record) {
                 <div class="col-12">
                     <div class="detail-box">
                         <small>Notes</small>
-                        <strong><?= e(trim((string)$record['notes']) !== '' ? $record['notes'] : 'No notes') ?></strong>
+                        <strong><?= e(
+                            trim((string)$record['notes']) !== ''
+                                ? $record['notes']
+                                : 'No notes'
+                        ) ?></strong>
                     </div>
                 </div>
 
@@ -377,8 +495,6 @@ if ($record) {
     <?php endif; ?>
 
 </div>
-
-</main>
 
 </body>
 </html>

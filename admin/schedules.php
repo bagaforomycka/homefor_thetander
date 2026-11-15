@@ -690,7 +690,7 @@ try {
                 </div>
 
                 <div class="schedule-actions">
-                    <a href="view_schedule.php?id=<?= (int)$item['id'] ?>"
+                    <a href="view_schedules.php?id=<?= (int)$item['id'] ?>"
                        class="btn btn-schedule-view">
                         View
                     </a>
