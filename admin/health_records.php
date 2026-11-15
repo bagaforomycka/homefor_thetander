@@ -188,14 +188,17 @@ try {
         .resident-meta { color: #66786c; font-size: 13px; margin-bottom: 14px; }
         .health-detail { background: #f7faf8; border: 1px solid #e5ede7; border-radius: 9px; padding: 10px; min-height: 42px; overflow-wrap: anywhere; }
         .health-detail strong { color: #294b35; }
-        .btn-view { color: #198754; background: #fff; border: 1px solid #198754; }
-        .btn-view:hover { color: #fff; background: #198754; }
-        .btn-edit { color: #725800; background: #ffdf70; border: 1px solid #e2b422; }
-        .btn-edit:hover { color: #5d4600; background: #ffcf40; border-color: #d6a000; }
-        .btn-delete { color: #b42318; background: #fff; border: 1px solid #dc3545; }
-        .btn-delete:hover { color: #fff; background: #dc3545; }
+        .record-actions .btn { font-size: 13px; padding: 5px 14px; border-radius: 6px; font-weight: 500; background: #fff !important; transition: all .2s; }
+        /* View - green */
+        .record-actions .btn.btn-view { color: #198754 !important; border: 1px solid #198754 !important; }
+        .record-actions .btn.btn-view:hover { color: #fff !important; background: #198754 !important; }
+        /* Edit - yellow */
+        .record-actions .btn.btn-edit { color: #f0ad00 !important; border: 1px solid #f5c542 !important; }
+        .record-actions .btn.btn-edit:hover { color: #fff !important; background: #f0ad00 !important; border-color: #f0ad00 !important; }
+        /* Delete - red */
+        .record-actions .btn.btn-delete { color: #dc3545 !important; border: 1px solid #dc3545 !important; }
+        .record-actions .btn.btn-delete:hover { color: #fff !important; background: #dc3545 !important; }
         .record-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
-        .record-actions .btn { font-size: 13px; padding: 5px 10px; }
     </style>
 </head>
 <body>
