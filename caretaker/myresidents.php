@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 
@@ -36,21 +35,18 @@ function residentPicture($picture): string
     }
 
     $filename = basename($picture);
-
-    // Actual location of uploaded resident pictures.
     $path = __DIR__ . '/../admin/uploads/residentspic/' . $filename;
 
     if (!is_file($path)) {
         return '../images/default-profile.png';
     }
 
-    // Browser URL of uploaded resident pictures.
     return '../admin/uploads/residentspic/' . rawurlencode($filename);
 }
 
 $caretakerId = (int)$_SESSION['user_id'];
 
-/* Private archive table (shared with archive.php). */
+/* Private archive table */
 try {
     archiveEnsureCaretakerTable($pdo);
     $residentVisible = archiveResidentVisibleSql($pdo, '');
@@ -63,9 +59,10 @@ try {
 if (empty($_SESSION['caretaker_archive_csrf'])) {
     $_SESSION['caretaker_archive_csrf'] = bin2hex(random_bytes(32));
 }
+
 $csrfToken = $_SESSION['caretaker_archive_csrf'];
 
-/* Archive a resident (hides from My Residents only; restorable). */
+/* Archive a resident */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archive') {
 
     $submittedToken = $_POST['csrf_token'] ?? '';
@@ -79,14 +76,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archi
 
     if ($archiveResidentId && $archiveResidentId > 0) {
         try {
-            // Only residents assigned to this caretaker can be archived.
             $check = $pdo->prepare("
                 SELECT id FROM residents
                 WHERE id = :id AND assigned_caretaker = :caretaker
                   AND $residentVisible
                 LIMIT 1
             ");
-            $check->execute(['id' => $archiveResidentId, 'caretaker' => $caretakerId]);
+
+            $check->execute([
+                'id' => $archiveResidentId,
+                'caretaker' => $caretakerId
+            ]);
 
             if ($check->fetchColumn()) {
                 $ins = $pdo->prepare("
@@ -94,13 +94,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archi
                         (caretaker_user_id, resident_id)
                     VALUES (:caretaker, :resident)
                 ");
+
                 $ins->execute([
                     'caretaker' => $caretakerId,
                     'resident' => $archiveResidentId
                 ]);
+
                 header('Location: myresidents.php?archived=1');
                 exit;
             }
+
         } catch (Throwable $e) {
             error_log('Caretaker archive error: ' . $e->getMessage());
         }
@@ -201,9 +204,7 @@ try {
     }
 
 } catch (PDOException $ex) {
-
     error_log('My Residents error: ' . $ex->getMessage());
-
     $error = 'Unable to load resident information. Please check the database connection and table structure.';
 }
 
@@ -212,7 +213,6 @@ $activeResidents = 0;
 $otherResidents = 0;
 
 foreach ($residents as $resident) {
-
     if (strtolower($resident['status'] ?? '') === 'active') {
         $activeResidents++;
     } else {
@@ -232,6 +232,11 @@ foreach ($residents as $resident) {
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
         rel="stylesheet"
     >
 
@@ -310,6 +315,48 @@ foreach ($residents as $resident) {
         .resident-toolbar .form-select {
             min-height: 45px;
             border-color: #dce6df;
+        }
+
+        .search-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-wrapper .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #888;
+            pointer-events: none;
+        }
+
+        .search-wrapper .form-control {
+            padding-left: 42px;
+            padding-right: 42px;
+        }
+
+        .clear-search {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            display: none;
+            font-size: 17px;
+        }
+
+        .clear-search:hover {
+            color: #17683a;
+        }
+
+        .search-count {
+            color: #718078;
+            font-size: 13px;
+            margin-top: 10px;
         }
 
         .resident-card {
@@ -693,12 +740,18 @@ foreach ($residents as $resident) {
         </div>
 
         <?php if (isset($_GET['archived'])): ?>
+
             <div class="alert alert-success">
                 Resident archived. You can bring them back anytime from
                 <a href="archive.php">Archive &amp; Restore</a>.
             </div>
+
         <?php elseif (isset($_GET['archive_error'])): ?>
-            <div class="alert alert-danger">Unable to archive that resident.</div>
+
+            <div class="alert alert-danger">
+                Unable to archive that resident.
+            </div>
+
         <?php endif; ?>
 
         <?php if ($error): ?>
@@ -708,6 +761,8 @@ foreach ($residents as $resident) {
             </div>
 
         <?php else: ?>
+
+            <!-- Summary Cards -->
 
             <div class="row g-3">
 
@@ -734,6 +789,8 @@ foreach ($residents as $resident) {
 
             </div>
 
+            <!-- Assigned Residents Heading -->
+
             <div class="d-flex justify-content-between align-items-end flex-wrap gap-2">
 
                 <div>
@@ -750,25 +807,53 @@ foreach ($residents as $resident) {
 
             </div>
 
+            <!-- Search and Status Filter -->
+
             <div class="resident-toolbar">
 
                 <div class="row g-3">
 
                     <div class="col-md-8">
-                        <input
-                            type="text"
-                            id="residentSearch"
-                            class="form-control"
-                            placeholder="Search by resident name, ID, or room number..."
-                        >
+
+                        <div class="search-wrapper">
+
+                            <i class="bi bi-search search-icon"></i>
+
+                            <input
+                                type="text"
+                                id="residentSearch"
+                                class="form-control"
+                                placeholder="Search by resident name, ID, or room number..."
+                                autocomplete="off"
+                            >
+
+                            <button
+                                type="button"
+                                id="clearSearch"
+                                class="clear-search"
+                                aria-label="Clear search and reset filters"
+                            >
+                                <i class="bi bi-x-circle-fill"></i>
+                            </button>
+
+                        </div>
+
+                        <div class="search-count" id="searchCount">
+                            Showing <?= $totalResidents ?> residents
+                        </div>
+
                     </div>
 
                     <div class="col-md-4">
+
                         <select id="statusFilter" class="form-select">
                             <option value="all">All Statuses</option>
+                            <option value="new">New</option>
                             <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
+                            <option value="needs attention">Needs Attention</option>
+                            <option value="discharged">Discharged</option>
                         </select>
+
                     </div>
 
                 </div>
@@ -778,16 +863,16 @@ foreach ($residents as $resident) {
             <?php if (empty($residents)): ?>
 
                 <div class="empty-state">
-
                     <h5>No Assigned Residents</h5>
 
                     <p class="mb-0">
                         Residents assigned to your caretaker account will appear here.
                     </p>
-
                 </div>
 
             <?php else: ?>
+
+                <!-- Resident Cards -->
 
                 <div class="row g-3" id="residentList">
 
@@ -870,9 +955,11 @@ foreach ($residents as $resident) {
                                         <span class="info-label">Status</span>
 
                                         <span class="info-value">
+
                                             <span class="status-badge <?= $statusClass ?>">
                                                 <?= e($status) ?>
                                             </span>
+
                                         </span>
 
                                     </div>
@@ -886,12 +973,30 @@ foreach ($residents as $resident) {
                                     View Resident Profile
                                 </a>
 
-                                <form method="post" action="myresidents.php"
-                                      onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');">
+                                <form
+                                    method="post"
+                                    action="myresidents.php"
+                                    onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');"
+                                >
+
                                     <input type="hidden" name="action" value="archive">
-                                    <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
-                                    <input type="hidden" name="resident_id" value="<?= (int)$resident['id'] ?>">
-                                    <button type="submit" class="archive-button">Archive</button>
+
+                                    <input
+                                        type="hidden"
+                                        name="csrf_token"
+                                        value="<?= e($csrfToken) ?>"
+                                    >
+
+                                    <input
+                                        type="hidden"
+                                        name="resident_id"
+                                        value="<?= (int)$resident['id'] ?>"
+                                    >
+
+                                    <button type="submit" class="archive-button">
+                                        Archive
+                                    </button>
+
                                 </form>
 
                             </div>
@@ -901,6 +1006,8 @@ foreach ($residents as $resident) {
                     <?php endforeach; ?>
 
                 </div>
+
+                <!-- No Search Results -->
 
                 <div
                     id="noSearchResults"
@@ -929,56 +1036,108 @@ foreach ($residents as $resident) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-const searchInput = document.getElementById('residentSearch');
-const statusFilter = document.getElementById('statusFilter');
-const residentItems = document.querySelectorAll('.resident-item');
-const noResults = document.getElementById('noSearchResults');
+document.addEventListener('DOMContentLoaded', function () {
 
-function filterResidents() {
+    const searchInput = document.getElementById('residentSearch');
+    const statusFilter = document.getElementById('statusFilter');
+    const clearSearch = document.getElementById('clearSearch');
+    const searchCount = document.getElementById('searchCount');
 
-    if (!searchInput || !statusFilter) {
-        return;
-    }
+    const residentItems = document.querySelectorAll('.resident-item');
+    const noResults = document.getElementById('noSearchResults');
 
-    const searchValue = searchInput.value.toLowerCase().trim();
-    const selectedStatus = statusFilter.value;
+    function filterResidents() {
 
-    let visibleCount = 0;
-
-    residentItems.forEach(function(item) {
-
-        const searchText = item.dataset.search || '';
-        const residentStatus = item.dataset.status || '';
-
-        const matchesSearch = searchText.includes(searchValue);
-
-        const matchesStatus =
-            selectedStatus === 'all' ||
-            residentStatus === selectedStatus;
-
-        const shouldShow = matchesSearch && matchesStatus;
-
-        item.style.display = shouldShow ? '' : 'none';
-
-        if (shouldShow) {
-            visibleCount++;
+        if (!searchInput || !statusFilter) {
+            return;
         }
 
-    });
+        const searchValue = searchInput.value.trim().toLowerCase();
+        const selectedStatus = statusFilter.value.trim().toLowerCase();
 
-    if (noResults) {
-        noResults.style.display =
-            visibleCount === 0 ? 'block' : 'none';
+        let visibleCount = 0;
+
+        residentItems.forEach(function (item) {
+
+            const searchText = (item.dataset.search || '').toLowerCase();
+            const residentStatus = (item.dataset.status || '').trim().toLowerCase();
+
+            const matchesSearch = searchText.includes(searchValue);
+
+            const matchesStatus =
+                selectedStatus === 'all' ||
+                residentStatus === selectedStatus;
+
+            const shouldShow = matchesSearch && matchesStatus;
+
+            item.style.display = shouldShow ? '' : 'none';
+
+            if (shouldShow) {
+                visibleCount++;
+            }
+
+        });
+
+        // Update result count.
+        if (searchCount) {
+            searchCount.textContent =
+                'Showing ' + visibleCount + ' of ' +
+                residentItems.length + ' residents';
+        }
+
+        // Show X when either search or status filtering is active.
+        if (clearSearch) {
+            clearSearch.style.display =
+                (searchValue !== '' || selectedStatus !== 'all')
+                    ? 'block'
+                    : 'none';
+        }
+
+        // Show or hide no-results message.
+        if (noResults) {
+            noResults.style.display =
+                visibleCount === 0 ? 'block' : 'none';
+        }
+
     }
-}
 
-if (searchInput) {
-    searchInput.addEventListener('input', filterResidents);
-}
+    // Live search.
+    if (searchInput) {
+        searchInput.addEventListener('input', filterResidents);
+    }
 
-if (statusFilter) {
-    statusFilter.addEventListener('change', filterResidents);
-}
+    // Status filtering.
+    if (statusFilter) {
+        statusFilter.addEventListener('change', filterResidents);
+    }
+
+    // Reset both search and status filter when X is clicked.
+    if (clearSearch) {
+
+        clearSearch.addEventListener('click', function () {
+
+            if (searchInput) {
+                searchInput.value = '';
+            }
+
+            if (statusFilter) {
+                statusFilter.value = 'all';
+            }
+
+            filterResidents();
+
+            if (searchInput) {
+                searchInput.focus();
+            }
+
+        });
+
+    }
+
+    // Set initial result count and button visibility.
+    filterResidents();
+
+});
 </script>
 
 </body>

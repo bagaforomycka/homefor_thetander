@@ -60,7 +60,6 @@ try {
             color: #333;
         }
 
-        /* MAIN CONTENT */
         .main-content {
             width: 100% !important;
             max-width: 100% !important;
@@ -70,10 +69,9 @@ try {
             min-height: calc(100vh - 72px);
         }
 
-        /* PAGE HEADER */
         .page-header {
             width: 100%;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
         }
 
         .page-header h2 {
@@ -89,7 +87,6 @@ try {
             font-size: 14px;
         }
 
-        /* ANNOUNCEMENT COUNT */
         .announcement-count {
             display: inline-flex;
             align-items: center;
@@ -101,6 +98,66 @@ try {
             font-size: 14px;
             font-weight: 600;
             white-space: nowrap;
+        }
+
+        /* SEARCH BOX */
+        .search-container {
+            width: 100%;
+            margin-bottom: 25px;
+        }
+
+        .search-box {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-box > i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #888;
+            font-size: 17px;
+            pointer-events: none;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 48px;
+            border: 1px solid #dce5df;
+            border-radius: 10px;
+            padding: 10px 45px 10px 45px;
+            font-size: 14px;
+            outline: none;
+            transition: 0.2s ease;
+        }
+
+        .search-input:focus {
+            border-color: #17683a;
+            box-shadow: 0 0 0 3px rgba(23, 104, 58, 0.10);
+        }
+
+        .clear-search {
+            position: absolute;
+            right: 13px;
+            top: 50%;
+            transform: translateY(-50%);
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 18px;
+            cursor: pointer;
+            display: none;
+        }
+
+        .clear-search:hover {
+            color: #17683a;
+        }
+
+        .search-results {
+            color: #888;
+            font-size: 13px;
+            margin-top: 9px;
         }
 
         /* ANNOUNCEMENT CARDS */
@@ -151,7 +208,6 @@ try {
             margin-bottom: 0;
         }
 
-        /* PUBLISHED BADGE */
         .published-badge {
             display: inline-block;
             background: #e6f3eb;
@@ -192,9 +248,12 @@ try {
             margin: 0;
         }
 
-        /* TABLET */
-        @media (max-width: 991.98px) {
+        /* NO SEARCH RESULTS */
+        .no-results {
+            display: none;
+        }
 
+        @media (max-width: 991.98px) {
             .main-content {
                 width: 100% !important;
                 margin: 0 !important;
@@ -211,9 +270,7 @@ try {
             }
         }
 
-        /* MOBILE */
         @media (max-width: 768px) {
-
             .page-header {
                 margin-bottom: 22px;
             }
@@ -230,6 +287,15 @@ try {
             .announcement-count {
                 padding: 9px 13px;
                 font-size: 12px;
+            }
+
+            .search-container {
+                margin-bottom: 20px;
+            }
+
+            .search-input {
+                height: 45px;
+                font-size: 13px;
             }
 
             .announcement-card {
@@ -263,9 +329,7 @@ try {
             }
         }
 
-        /* SMALL MOBILE */
         @media (max-width: 400px) {
-
             .page-header h2 {
                 font-size: 21px;
             }
@@ -318,7 +382,6 @@ try {
 
         </div>
 
-        <!-- ANNOUNCEMENTS -->
         <?php if ($error !== ''): ?>
 
             <div class="alert alert-danger">
@@ -327,53 +390,107 @@ try {
 
         <?php elseif (!empty($announcements)): ?>
 
-            <?php foreach ($announcements as $announcement): ?>
+            <!-- SEARCH BOX -->
+            <div class="search-container">
 
-                <div class="announcement-card">
+                <div class="search-box">
 
-                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <i class="bi bi-search"></i>
 
-                        <h5 class="announcement-title">
-                            <?= e($announcement['title'] ?? 'Untitled Announcement') ?>
-                        </h5>
+                    <input
+                        type="text"
+                        id="announcementSearch"
+                        class="search-input"
+                        placeholder="Search announcements by keywords..."
+                        autocomplete="off"
+                    >
 
-                        <span class="published-badge">
-                            Published
-                        </span>
-
-                    </div>
-
-                    <div class="announcement-date">
-
-                        <i class="bi bi-calendar3"></i>
-
-                        <?php if (!empty($announcement['created_at'])): ?>
-
-                            <?= date(
-                                'F d, Y',
-                                strtotime($announcement['created_at'])
-                            ) ?>
-
-                            <span>•</span>
-
-                            <?= date(
-                                'h:i A',
-                                strtotime($announcement['created_at'])
-                            ) ?>
-
-                        <?php else: ?>
-
-                            Date unavailable
-
-                        <?php endif; ?>
-
-                    </div>
-
-                    <p class="announcement-message"><?= e($announcement['message'] ?? '') ?></p>
+                    <button
+                        type="button"
+                        id="clearSearch"
+                        class="clear-search"
+                        aria-label="Clear search"
+                    >
+                        <i class="bi bi-x-circle-fill"></i>
+                    </button>
 
                 </div>
 
-            <?php endforeach; ?>
+                <div class="search-results" id="searchResults">
+                    Showing <?= count($announcements) ?> announcements
+                </div>
+
+            </div>
+
+            <!-- ANNOUNCEMENTS -->
+            <div id="announcementList">
+
+                <?php foreach ($announcements as $announcement): ?>
+
+                    <div
+                        class="announcement-card"
+                        data-search="<?= e(($announcement['title'] ?? '') . ' ' . ($announcement['message'] ?? '')) ?>"
+                    >
+
+                        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+
+                            <h5 class="announcement-title">
+                                <?= e($announcement['title'] ?? 'Untitled Announcement') ?>
+                            </h5>
+
+                            <span class="published-badge">
+                                Published
+                            </span>
+
+                        </div>
+
+                        <div class="announcement-date">
+
+                            <i class="bi bi-calendar3"></i>
+
+                            <?php if (!empty($announcement['created_at'])): ?>
+
+                                <?= date(
+                                    'F d, Y',
+                                    strtotime($announcement['created_at'])
+                                ) ?>
+
+                                <span>•</span>
+
+                                <?= date(
+                                    'h:i A',
+                                    strtotime($announcement['created_at'])
+                                ) ?>
+
+                            <?php else: ?>
+
+                                Date unavailable
+
+                            <?php endif; ?>
+
+                        </div>
+
+                        <p class="announcement-message"><?= e($announcement['message'] ?? '') ?></p>
+
+                    </div>
+
+                <?php endforeach; ?>
+
+            </div>
+
+            <!-- NO SEARCH RESULTS -->
+            <div class="empty-state no-results" id="noResults">
+
+                <i class="bi bi-search"></i>
+
+                <h5>No Matching Announcements</h5>
+
+                <p>
+                    We couldn't find any announcements matching your keyword.
+                    Try searching for another word.
+                </p>
+
+            </div>
 
         <?php else: ?>
 
@@ -393,6 +510,64 @@ try {
         <?php endif; ?>
 
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            const searchInput = document.getElementById('announcementSearch');
+            const clearButton = document.getElementById('clearSearch');
+            const searchResults = document.getElementById('searchResults');
+            const noResults = document.getElementById('noResults');
+
+            if (!searchInput) {
+                return;
+            }
+
+            const announcementCards = document.querySelectorAll('.announcement-card');
+
+            function searchAnnouncements() {
+
+                const keyword = searchInput.value.trim().toLowerCase();
+
+                let visibleCount = 0;
+
+                announcementCards.forEach(function (card) {
+
+                    const searchableText = card.dataset.search.toLowerCase();
+
+                    const matches = searchableText.includes(keyword);
+
+                    card.style.display = matches ? '' : 'none';
+
+                    if (matches) {
+                        visibleCount++;
+                    }
+
+                });
+
+                searchResults.textContent =
+                    'Showing ' + visibleCount + ' of ' +
+                    announcementCards.length + ' announcements';
+
+                clearButton.style.display = keyword !== '' ? 'block' : 'none';
+
+                noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+            }
+
+            searchInput.addEventListener('input', searchAnnouncements);
+
+            clearButton.addEventListener('click', function () {
+
+                searchInput.value = '';
+
+                searchAnnouncements();
+
+                searchInput.focus();
+
+            });
+
+        });
+    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
