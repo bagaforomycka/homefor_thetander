@@ -1065,9 +1065,9 @@ if (!function_exists('sidebarLink')) {
             );
 
             sidebarLink(
-                '/homefor_thetander/caretaker/myresidents.php',
+                '/homefor_thetander/caretaker/my_residents.php',
                 'My Residents',
-                'myresidents.php',
+                'my_residents.php',
                 $currentPage
             );
 

@@ -467,7 +467,7 @@ $view = (($_GET['view'] ?? 'weekly') === 'monthly') ? 'monthly' : 'weekly';
             </div>
         </div>
 
-        <a href="myresidents.php" class="summary-card summary-link">
+        <a href="my_residents.php" class="summary-card summary-link">
             <div>
                 <div class="label">Assigned Residents</div>
                 <div class="value"><?= (int)$assignedResidentsCount ?></div>

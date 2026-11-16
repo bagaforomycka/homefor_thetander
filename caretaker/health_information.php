@@ -411,17 +411,23 @@ try {
         .info-list strong { color: #294b35; }
 
         .action-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-        .btn-add-notes {
-            color: #fff; background: #198754; border: 2px solid #0b4f2a; font-weight: 700;
-            padding: 7px 16px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 14px;
-        }
-        .btn-add-notes:hover { background: #157347; color: #fff; border-color: #0b4f2a; }
-        .alerts-link { margin-left: auto; color: #17683a; font-weight: 700; text-decoration: none; font-size: 14px; }
-        .alerts-link:hover { text-decoration: underline; color: #17683a; }
-        button.alerts-link { background: none; border: 0; padding: 0; }
-        .alert-item { border-left: 4px solid #dc3545; background: #fff5f5; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
-        .alert-item.observation { border-left-color: #198754; background: #f3faf5; }
-        .alert-item .alert-date { font-size: 12px; color: #6c757d; }
+        .btn.btn-add-notes {
+    color: #198754 !important;
+    background: #fff !important;
+    border: 2px solid #198754 !important;
+    font-weight: 700;
+    padding: 7px 16px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+.btn.btn-add-notes:hover {
+    color: #fff !important;
+    background: #198754 !important;
+    border-color: #198754 !important;
+}
     </style>
 </head>
 <body>

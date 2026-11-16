@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archi
                     'resident' => $archiveResidentId
                 ]);
 
-                header('Location: myresidents.php?archived=1');
+                header('Location: my_residents.php?archived=1');
                 exit;
             }
 
@@ -109,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'archi
         }
     }
 
-    header('Location: myresidents.php?archive_error=1');
+    header('Location: my_residents.php?archive_error=1');
     exit;
 }
 
@@ -626,7 +626,7 @@ foreach ($residents as $resident) {
                 <p>View the complete information of your assigned resident.</p>
             </div>
 
-            <a href="myresidents.php" class="btn btn-outline-success">
+            <a href="my_residents.php" class="btn btn-outline-success">
                 Back to My Residents
             </a>
 
@@ -728,7 +728,7 @@ foreach ($residents as $resident) {
             <?= e($error) ?>
         </div>
 
-        <a href="myresidents.php" class="btn btn-success">
+        <a href="my_residents.php" class="btn btn-success">
             Back to My Residents
         </a>
 
@@ -915,7 +915,7 @@ foreach ($residents as $resident) {
 
                                         <a
                                             class="resident-name"
-                                            href="myresidents.php?id=<?= (int)$resident['id'] ?>"
+                                            href="my_residents.php?id=<?= (int)$resident['id'] ?>"
                                         >
                                             <?= e($fullName) ?>
                                         </a>
@@ -967,7 +967,7 @@ foreach ($residents as $resident) {
                                 </div>
 
                                 <a
-                                    href="myresidents.php?id=<?= (int)$resident['id'] ?>"
+                                    href="my_residents.php?id=<?= (int)$resident['id'] ?>"
                                     class="view-profile-button"
                                 >
                                     View Resident Profile
@@ -975,7 +975,7 @@ foreach ($residents as $resident) {
 
                                 <form
                                     method="post"
-                                    action="myresidents.php"
+                                    action="my_residents.php"
                                     onsubmit="return confirm('Archive this resident? You can restore them later from Archive & Restore.');"
                                 >
 
