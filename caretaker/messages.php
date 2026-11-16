@@ -20,8 +20,10 @@ if (empty($_SESSION['messages_csrf'])) {
     $_SESSION['messages_csrf'] = bin2hex(random_bytes(32));
 }
 
-$errorMsg = '';
-$successMsg = '';
+// Flash messages set by other pages (e.g. compose_message.php) - shown once
+$successMsg = $_SESSION['flash_success'] ?? '';
+$errorMsg   = $_SESSION['flash_error'] ?? '';
+unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 // Handle Delete action
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -34,8 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'delete' && $id > 0) {
             try {
-                $stmt = $pdo->prepare("DELETE FROM messages WHERE id = ? AND recipient_id = ?");
-                $stmt->execute([$id, $_SESSION['user_id']]);
+                // Allow deleting messages you received OR sent
+                $stmt = $pdo->prepare("DELETE FROM messages WHERE id = ? AND (recipient_id = ? OR sender_id = ?)");
+                $stmt->execute([$id, $_SESSION['user_id'], $_SESSION['user_id']]);
                 $successMsg = 'Message deleted successfully.';
             } catch (PDOException $e) {
                 $errorMsg = 'Database error: ' . $e->getMessage();
@@ -45,9 +48,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $tab = $_GET['tab'] ?? 'admin';
+if (!in_array($tab, ['admin', 'unread', 'sent'], true)) {
+    $tab = 'admin';
+}
 $search = trim($_GET['search'] ?? '');
 
-// Counts for tabs filtered by logged-in user as recipient
+// Counts for tabs
 try {
     $stmtAdmin = $pdo->prepare("SELECT COUNT(*) FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.recipient_id = ? AND u.role = 'admin'");
     $stmtAdmin->execute([$_SESSION['user_id']]);
@@ -56,13 +62,29 @@ try {
     $stmtUnread = $pdo->prepare("SELECT COUNT(*) FROM messages WHERE recipient_id = ? AND is_read = 0");
     $stmtUnread->execute([$_SESSION['user_id']]);
     $unreadCount = (int)$stmtUnread->fetchColumn();
+
+    $stmtSent = $pdo->prepare("SELECT COUNT(*) FROM messages WHERE sender_id = ?");
+    $stmtSent->execute([$_SESSION['user_id']]);
+    $sentCount = (int)$stmtSent->fetchColumn();
 } catch (Throwable $e) {
     $adminCount = 0;
     $unreadCount = 0;
+    $sentCount = 0;
 }
 
-// Fetch messages based on tab, restricted to logged-in user as recipient
-$sql = "SELECT m.*, u.full_name as sender_name, u.role as sender_role FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.recipient_id = ?";
+// Fetch messages based on tab
+if ($tab === 'sent') {
+    // For sent mail, "u" is the person the message was sent TO
+    $sql = "SELECT m.*, u.full_name AS sender_name, u.role AS sender_role
+            FROM messages m
+            JOIN users u ON m.recipient_id = u.id
+            WHERE m.sender_id = ?";
+} else {
+    $sql = "SELECT m.*, u.full_name AS sender_name, u.role AS sender_role
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.recipient_id = ?";
+}
 $params = [$_SESSION['user_id']];
 
 if ($tab === 'admin') {
@@ -78,9 +100,17 @@ if ($search !== '') {
 }
 
 $sql .= " ORDER BY m.created_at DESC";
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+try {
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    $messages = [];
+    $errorMsg = $errorMsg !== '' ? $errorMsg : 'Could not load messages: ' . $e->getMessage();
+}
+
+$cardTitle = $tab === 'sent' ? 'Sent Messages' : ($tab === 'unread' ? 'Unread Messages' : 'Admin Messages');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -219,7 +249,6 @@ $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <p>View and manage internal communication and system alerts.</p>
         </div>
         <div class="d-flex gap-2">
-           
             <a href="compose_message.php" class="btn btn-success">+ New Message</a>
         </div>
     </div>
@@ -250,6 +279,11 @@ $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 Unread <span class="badge ms-1"><?= $unreadCount ?></span>
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link <?= $tab === 'sent' ? 'active' : '' ?>" href="messages.php?tab=sent">
+                Sent <span class="badge ms-1"><?= $sentCount ?></span>
+            </a>
+        </li>
     </ul>
 
     <!-- Search Card -->
@@ -257,7 +291,7 @@ $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <form method="GET" class="row g-3 align-items-end">
             <input type="hidden" name="tab" value="<?= e($tab) ?>">
             <div class="col-md-10">
-                <label class="form-label">Search by subject or sender</label>
+                <label class="form-label">Search by subject or <?= $tab === 'sent' ? 'recipient' : 'sender' ?></label>
                 <input type="text" name="search" class="form-control" value="<?= e($search) ?>" placeholder="Enter keyword...">
             </div>
             <div class="col-md-2 d-flex gap-2">
@@ -271,7 +305,7 @@ $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="content-card">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="fw-bold m-0" style="color: var(--green);">
-                <?= $tab === 'unread' ? 'Unread Messages' : 'Admin Messages' ?>
+                <?= e($cardTitle) ?>
             </h5>
             <span class="text-muted small">Total: <?= count($messages) ?></span>
         </div>
@@ -280,7 +314,7 @@ $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <table class="table table-hover align-middle mb-0">
                 <thead>
                     <tr>
-                        <th>Sender</th>
+                        <th><?= $tab === 'sent' ? 'To' : 'From' ?></th>
                         <th>Subject</th>
                         <th>Preview</th>
                         <th>Date</th>
