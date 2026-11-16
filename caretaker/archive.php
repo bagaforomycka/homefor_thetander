@@ -650,21 +650,19 @@ $isMessages = $tab === 'messages';
 
         .archive-table td {
             vertical-align: middle;
-        }
+       .btn-restore {
+    background-color: #17683a !important;
+    color: #ffffff !important;
+    border: 2px solid #035e2f !important;
+    border-radius: 6px !important;
+    padding: 7px 15px;
+}
 
-        .btn-restore {
-            background: #17683a;
-            border: 2px solid #ffc107 !important;
-            color: #fff;
-            border-radius: 6px;
-            padding: 7px 15px;
-        }
-
-        .btn-restore:hover {
-            background: #0b5425;
-            border-color: #e0a800 !important;
-            color: #fff;
-        }
+.btn-restore:hover {
+    background-color: #0b5425 !important;
+    color: #ffffff !important;
+    border: 2px solid #024d25 !important;
+}
 
         .empty-state {
             padding: 55px 20px;
@@ -876,9 +874,11 @@ $isMessages = $tab === 'messages';
                                         <input type="hidden" name="category" value="<?= h($tab) ?>">
                                         <input type="hidden" name="record_id" value="<?= (int)$row['rid'] ?>">
 
-                                        <button type="submit" class="btn btn-restore btn-sm" style="border: 2px solid #ffc107 !important;">
-                                            Restore
-                                        </button>
+                                       <button type="submit" class="btn btn-sm btn-restore">
+    Restore
+</button>
+
+</button>
                                     </form>
                                 </td>
                             </tr>

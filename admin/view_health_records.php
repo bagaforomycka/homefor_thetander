@@ -231,24 +231,43 @@ if ($record) {
             font-weight: 700;
         }
 
-        .btn-edit {
-            color: #fff;
-            background: #17683a;
-            border: 1px solid #17683a;
-            font-weight: 600;
-            text-decoration: none;
-        }
-
-        .btn-edit:hover {
-            color: #fff;
-            background: #10532d;
-            border-color: #10532d;
-        }
-
         .profile-actions {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .profile-actions .btn-edit {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 10px 22px;
+            min-width: 90px;
+            background-color: #17683a !important;
+            color: #ffffff !important;
+            border: 1px solid #17683a !important;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none !important;
+            transition: background-color .2s ease, border-color .2s ease;
+        }
+
+        .profile-actions .btn-edit:hover {
+            background-color: #10532d !important;
+            border-color: #10532d !important;
+            color: #ffffff !important;
+        }
+
+        .profile-actions .btn-edit:focus {
+            box-shadow: 0 0 0 3px rgba(23, 104, 58, .2);
+        }
+
+        .profile-actions .btn-outline-secondary {
+            padding: 10px 20px;
+            border-radius: 8px;
         }
 
         @media (max-width: 768px) {
@@ -286,6 +305,11 @@ if ($record) {
 
             .profile-heading h2 {
                 font-size: 20px;
+            }
+
+            .profile-actions {
+                display: flex;
+                width: 100%;
             }
 
             .profile-actions .btn {
